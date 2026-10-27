@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 const ffmpegPath = require('ffmpeg-static');
 const {
   ActivityType,
@@ -217,6 +218,56 @@ async function resolveSoundCloudPlaylistUrl(trackInfo, trackTitle) {
 
   throw lastError || new Error('All SoundCloud HLS formats failed.');
 }
+
+async function createSoundCloudPcmStream(trackInfo, trackTitle) {
+  const playlistUrl = await resolveSoundCloudPlaylistUrl(trackInfo, trackTitle);
+  const args = [
+    '-hide_banner',
+    '-loglevel', 'warning',
+    '-nostdin',
+    '-user_agent', 'Mozilla/5.0 DiscordMusicBot/1.0',
+    '-headers', 'Origin: https://soundcloud.com\\r\\nReferer: https://soundcloud.com/\\r\\n',
+    '-i', playlistUrl,
+    '-vn',
+    '-acodec', 'pcm_s16le',
+    '-f', 's16le',
+    '-ar', '48000',
+    '-ac', '2',
+    'pipe:1',
+  ];
+
+  console.log('Starting diagnostic SoundCloud FFmpeg PCM pipeline:', trackTitle);
+  const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  child.audioBytes = 0;
+  let stderrTail = '';
+
+  child.stderr.on('data', chunk => {
+    stderrTail = (stderrTail + chunk.toString()).slice(-5000);
+  });
+  child.on('error', error => {
+    console.error('SoundCloud FFmpeg process error:', error.message || error);
+  });
+  child.stdout.on('data', chunk => {
+    child.audioBytes += chunk.length;
+    if (child.audioBytes === chunk.length) {
+      console.log('SoundCloud FFmpeg emitted first PCM bytes:', chunk.length, 'for', trackTitle);
+    }
+  });
+  child.on('close', (code, signal) => {
+    const safeDetails = stderrTail.split(String.fromCharCode(10)).map(line =>
+      line.includes('://') ? '[FFmpeg diagnostic URL omitted]' : line
+    ).join(String.fromCharCode(10)).trim();
+    console.log(
+      'SoundCloud FFmpeg closed:', 'code=' + code, 'signal=' + signal,
+      'pcmBytes=' + child.audioBytes, 'track=' + trackTitle
+    );
+    if (code !== 0 || child.audioBytes === 0) {
+      console.error('SoundCloud FFmpeg diagnostic:', safeDetails || '(FFmpeg returned no stderr)');
+    }
+  });
+
+  return { stream: child.stdout, process: child };
+}
 async function findSoundCloudTrack(query, requestedBy) {
   await ensureSoundCloudReady();
   const results = await play.search(query, {
@@ -348,13 +399,18 @@ async function playNext(guildId) {
   try {
     console.log('Starting track:', track.title);
     let resource;
+    let soundCloudProcess = null;
 
     if (track.source === 'soundcloud' && track.soundCloudInfo) {
-      // Pass the HLS URL directly to discord.js voice. Its internal FFmpeg
-      // transformer handles AAC HLS and emits the PCM/Opus pipeline.
-      const playlistUrl = await resolveSoundCloudPlaylistUrl(track.soundCloudInfo, track.title);
-      resource = createAudioResource(playlistUrl, { metadata: track });
-      console.log('SoundCloud resource created with bundled FFmpeg:', track.title);
+      // Explicitly decode SoundCloud AAC HLS to PCM so FFmpeg diagnostics
+      // and the number of decoded audio bytes are visible in runtime logs.
+      const direct = await createSoundCloudPcmStream(track.soundCloudInfo, track.title);
+      soundCloudProcess = direct.process;
+      resource = createAudioResource(direct.stream, {
+        metadata: track,
+        inputType: StreamType.Raw,
+      });
+      track.ffmpegProcess = soundCloudProcess;
     } else {
       const result = await play.stream(track.url);
       resource = createAudioResource(result.stream, {
@@ -368,6 +424,7 @@ async function playNext(guildId) {
     });
     queue.player.play(resource);
     console.log('Audio resource queued:', track.title);
+    if (soundCloudProcess) console.log('SoundCloud PCM stream linked to Discord audio resource:', track.title);
   } catch (error) {
     console.error('Track failed:', track.title, error.stack || error);
     queue.current = null;
@@ -502,6 +559,7 @@ async function registerCommands() {
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
+  console.log('Runtime process ID:', process.pid);
   console.log('Logged in as ' + readyClient.user.tag);
   readyClient.user.setActivity('music + moderation', { type: ActivityType.Playing });
   try {
