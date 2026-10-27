@@ -59,7 +59,7 @@ The bot can reply conversationally when a member starts a message with `محمد
 3. In Discord Developer Portal, open the bot application, go to **Bot**, enable **Message Content Intent**, and save changes. The code also requests the Message Content privileged intent.
 4. Redeploy the bot on Infrlo.
 
-The bot replies only when mentioned or directly replied to, uses the user's language, keeps a short conversation history per member/channel, and includes a small per-user cooldown. No payment method is needed for the Groq Free plan; do not upgrade to a paid tier if you want to keep this setup free. Review Groq's current [rate limits](https://console.groq.com/docs/rate-limits) because they can change.
+The bot replies when mentioned, directly replied to, or addressed with the `محمد` / `ربات` prefix. Requests such as `محمد آهنگ Parandeh رو پخش کن` use the same track-search, voice-connection, and queue flow as `/play`; the member must already be in a voice channel. Other messages go to the AI chat handler. It uses the user's language, keeps a short conversation history per member/channel, and includes a small per-user cooldown. No payment method is needed for the Groq Free plan; do not upgrade to a paid tier if you want to keep this setup free. Review Groq's current [rate limits](https://console.groq.com/docs/rate-limits) because they can change.
 
 ## Invite the bot
 
