@@ -1,0 +1,21 @@
+{
+  "name": "discord-music-moderator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord slash-command music and moderation bot for Infrlo",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "check": "node --check index.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "@discordjs/voice": "0.19.2",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.2.3",
+    "opusscript": "^0.0.8",
+    "play-dl": "^1.9.7"
+  }
+}
