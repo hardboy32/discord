@@ -52,7 +52,7 @@ Do not put the real token in GitHub or in `.env.example`. Add it only to Infrlo'
 
 ## Free AI chat
 
-The bot can reply conversationally when a member starts a message with `(محمد)`, mentions the bot, or replies to one of its messages. The `(محمد)` prefix is removed before the message is sent to the AI. It uses Groq's free API tier by default, with model `openai/gpt-oss-20b`. Free-tier rate limits apply; if a limit is reached, the bot will ask users to try again later.
+The bot can reply conversationally when a member starts a message with `محمد`, `محمد ربات`, `(محمد)`, or `(محمد ربات)`, mentions the bot, or replies to one of its messages. The name prefix is removed before the message is sent to the AI. It uses Groq's free API tier by default, with model `openai/gpt-oss-20b`. Free-tier rate limits apply; if a limit is reached, the bot will ask users to try again later.
 
 1. Create a free account at [Groq Console](https://console.groq.com/) and create an API key at [Groq API Keys](https://console.groq.com/keys).
 2. In Infrlo Environment Variables, add `GROQ_API_KEY` and set its value to the key you created. Do not put the key in GitHub or share it publicly.
