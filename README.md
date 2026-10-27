@@ -10,6 +10,7 @@ A Discord slash-command bot designed for Infrlo.
 - `/pause` and `/resume` — pause/resume playback
 - `/stop` — stop playback and clear the queue
 - `/leave` — leave voice
+- `/activity` — set the bot activity (bot owner only); choose Playing, Listening, Watching, Competing, or Clear activity
 
 ## Moderation commands
 - `/kick`, `/ban`
@@ -43,12 +44,17 @@ Add these Environment Variables in Infrlo:
 - `DISCORD_TOKEN` — bot token from Discord Developer Portal
 - `DISCORD_CLIENT_ID` — Application ID from Discord Developer Portal
 - `DISCORD_GUILD_ID` — optional test server ID. For a public bot, leave it blank so commands register globally.
+- `BOT_OWNER_ID` — optional Discord user ID allowed to change the global activity. The bot attempts to detect the application owner automatically if this is blank; set it if automatic detection does not work.
 
 Do not put the real token in GitHub or in `.env.example`. Add it only to Infrlo's Environment Variables. Redeploy after setting the variables.
 
 ## Invite the bot
 
 In Discord Developer Portal, create an application and add its Bot. Use OAuth2 URL Generator with scopes `bot` and `applications.commands`. Grant only the permissions needed: View Channels, Send Messages, Use Application Commands, Connect, Speak, Kick Members, Ban Members, Moderate Members, Manage Messages, and Manage Channels. The bot's role hierarchy must permit the requested moderation action.
+
+## Set the bot activity
+
+Use `/activity` and choose an activity type. Examples: `Playing` + `Chess`, `Listening to` + `Music`, `Watching` + `Movies`, or `Competing in` + `Ranked`. Choose `Clear activity` to remove the activity text. The command changes the bot's global presence and is restricted to the application owner.
 
 ## Notes
 - Music source extraction depends on upstream YouTube/SoundCloud changes and network access from the host. The Build Command installs the system FFmpeg and the bot prefers `/usr/bin/ffmpeg`; it falls back to the npm `ffmpeg-static` package only if a system binary is unavailable. Runtime logs print the selected FFmpeg path and version.
