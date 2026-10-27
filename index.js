@@ -3,7 +3,40 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const ffmpegPath = require('ffmpeg-static');
+let bundledFfmpegPath = null;
+try {
+  bundledFfmpegPath = require('ffmpeg-static');
+} catch (error) {
+  console.warn('ffmpeg-static package could not be loaded:', error.message || error);
+}
+const ffmpegPath = [
+  process.env.FFMPEG_PATH,
+  '/usr/bin/ffmpeg',
+  '/usr/local/bin/ffmpeg',
+  bundledFfmpegPath,
+].find(candidate => candidate && fs.existsSync(candidate));
+
+if (!ffmpegPath) {
+  console.error('FFmpeg is missing. Install it in Infrlo Build Command or set FFMPEG_PATH.');
+  process.exit(1);
+}
+console.log('Using FFmpeg binary:', ffmpegPath);
+
+function logFfmpegVersion() {
+  const probe = spawn(ffmpegPath, ['-version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let reported = false;
+  probe.stdout.on('data', chunk => {
+    if (reported) return;
+    const firstLine = chunk.toString().split(String.fromCharCode(10))[0].trim();
+    if (firstLine) {
+      reported = true;
+      console.log('FFmpeg version:', firstLine);
+    }
+  });
+  probe.on('error', error => {
+    console.error('Could not run FFmpeg version check:', error.message || error);
+  });
+}
 const {
   ActivityType,
   Client,
@@ -560,6 +593,7 @@ async function registerCommands() {
 
 client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
+  logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
   readyClient.user.setActivity('music + moderation', { type: ActivityType.Playing });
   try {
