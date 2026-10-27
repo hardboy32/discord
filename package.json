@@ -17,6 +17,6 @@
     "dotenv": "^17.2.3",
     "node": "22.23.4",
     "opusscript": "^0.0.8",
-    "play-dl": "^1.9.7"
+    "@iamtraction/play-dl": "2.0.1"
   }
 }
