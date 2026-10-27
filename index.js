@@ -97,7 +97,19 @@ function getQueue(guildId) {
 
   queue.player.on('error', (error) => {
     console.error('Audio player error:', error.message || error);
+    const failedTrack = queue.current;
     queue.current = null;
+
+    // Some sources fail only after audio streaming begins. Keep trying the
+    // remaining SoundCloud search candidates in that case too.
+    if (failedTrack && failedTrack.source === 'soundcloud' &&
+        Array.isArray(failedTrack.alternatives) && failedTrack.alternatives.length) {
+      const [nextCandidate, ...remainingCandidates] = failedTrack.alternatives;
+      nextCandidate.alternatives = remainingCandidates;
+      queue.tracks.unshift(nextCandidate);
+      console.warn('SoundCloud stream failed; trying another result:', nextCandidate.title);
+    }
+
     setTimeout(() => void playNext(guildId), 800);
   });
 
