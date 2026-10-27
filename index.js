@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
+const ffmpegPath = require('ffmpeg-static');
 const {
   ActivityType,
   Client,
@@ -16,6 +18,7 @@ const {
 } = require('discord.js');
 const {
   AudioPlayerStatus,
+  StreamType,
   NoSubscriberBehavior,
   VoiceConnectionStatus,
   createAudioPlayer,
@@ -40,12 +43,14 @@ const client = new Client({
 });
 const queues = new Map();
 let soundCloudInitPromise = null;
+let soundCloudClientId = null;
 
 async function ensureSoundCloudReady() {
   if (!soundCloudInitPromise) {
     soundCloudInitPromise = (async () => {
       const clientId = await play.getFreeClientID();
       if (!clientId) throw new Error('SoundCloud did not return a client ID.');
+      soundCloudClientId = clientId;
       play.setToken({ soundcloud: { client_id: clientId } });
       console.log('SoundCloud client configured.');
     })().catch((error) => {
@@ -89,6 +94,16 @@ function getQueue(guildId) {
       behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
     }),
   };
+
+  queue.player.on('stateChange', (oldState, newState) => {
+    console.log(
+      'Audio player state:', oldState.status, '->', newState.status,
+      '| track:', queue.current ? queue.current.title : 'none'
+    );
+    if (newState.status === AudioPlayerStatus.Playing) {
+      console.log('Audio player entered PLAYING state:', queue.current ? queue.current.title : 'unknown');
+    }
+  });
 
   queue.player.on(AudioPlayerStatus.Idle, () => {
     queue.current = null;
@@ -155,6 +170,91 @@ function preferModernSoundCloudFormats(trackInfo, trackTitle = 'unknown track') 
   return Object.assign(Object.create(Object.getPrototypeOf(trackInfo)), trackInfo, {
     formats: selected,
   });
+}
+
+async function createSoundCloudOpusStream(trackInfo, trackTitle) {
+  await ensureSoundCloudReady();
+  if (!soundCloudClientId) throw new Error('SoundCloud client ID is unavailable.');
+  if (!ffmpegPath) throw new Error('ffmpeg-static binary is unavailable on this host.');
+
+  const formats = Array.isArray(trackInfo && trackInfo.formats) ? trackInfo.formats : [];
+  const hlsFormats = formats.filter(item => item && item.format && item.format.protocol === 'hls');
+  const aacFormats = hlsFormats.filter(item =>
+    /aac/i.test(String(item.preset || '')) ||
+    /aac/i.test(String(item.format.mime_type || ''))
+  );
+  const candidates = (aacFormats.length ? aacFormats : hlsFormats).slice().sort((a, b) => {
+    const bitrate = item => {
+      const match = String(item.preset || '').match(/[0-9]+k/i);
+      return match ? Number(match[0].slice(0, -1)) : 0;
+    };
+    return bitrate(b) - bitrate(a);
+  });
+  if (!candidates.length) throw new Error('SoundCloud did not provide an HLS audio format.');
+
+  let lastError;
+  for (const format of candidates) {
+    try {
+      const endpoint = new URL(format.url);
+      endpoint.searchParams.set('client_id', soundCloudClientId);
+
+      const response = await fetch(endpoint, {
+        headers: { 'user-agent': 'Mozilla/5.0 DiscordMusicBot/1.0' },
+      });
+      if (!response.ok) throw new Error('SoundCloud media endpoint returned HTTP ' + response.status);
+
+      const mediaData = await response.json();
+      const playlistUrl = mediaData && mediaData.url;
+      if (!playlistUrl || !(playlistUrl.startsWith('https://') || playlistUrl.startsWith('http://'))) {
+        throw new Error('SoundCloud media endpoint did not return a playlist URL.');
+      }
+
+      console.log('Opening SoundCloud AAC/HLS directly with FFmpeg:', trackTitle, '|', format.preset || 'HLS');
+      const child = spawn(ffmpegPath, [
+        '-hide_banner',
+        '-loglevel', 'warning',
+        '-nostdin',
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5',
+        '-i', playlistUrl,
+        '-vn',
+        '-c:a', 'libopus',
+        '-application', 'audio',
+        '-b:a', '128k',
+        '-ar', '48000',
+        '-ac', '2',
+        '-f', 'ogg',
+        'pipe:1',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+      let stderrTail = '';
+      child.stderr.on('data', chunk => {
+        stderrTail = (stderrTail + chunk.toString()).slice(-3000);
+      });
+      child.on('error', error => {
+        console.error('SoundCloud FFmpeg spawn failed:', error.message);
+      });
+      child.on('close', code => {
+        if (code !== 0) {
+          const safeLines = stderrTail.split('\n').map(line =>
+            line.includes('://') ? '[FFmpeg line with URL omitted]' : line
+          ).join('\n').trim();
+          console.error('SoundCloud FFmpeg exited with code', code, safeLines || '(no FFmpeg details)');
+          if (!child.stdout.destroyed) child.stdout.destroy(new Error('FFmpeg exited with code ' + code));
+        } else {
+          console.log('SoundCloud FFmpeg finished:', trackTitle);
+        }
+      });
+
+      return { stream: child.stdout, process: child };
+    } catch (error) {
+      lastError = error;
+      console.warn('SoundCloud HLS format failed:', format.preset || 'unknown', error.message || error);
+    }
+  }
+
+  throw lastError || new Error('All SoundCloud HLS formats failed.');
 }
 
 async function findSoundCloudTrack(query, requestedBy) {
@@ -257,7 +357,11 @@ async function connectVoice(guild, channel, queue) {
   });
   queue.connection = connection;
   queue.voiceChannelId = channel.id;
-  connection.subscribe(queue.player);
+  const subscription = connection.subscribe(queue.player);
+  console.log('Voice player subscription:', subscription ? 'attached' : 'FAILED');
+  connection.on('stateChange', (oldState, newState) => {
+    console.log('Voice connection state:', oldState.status, '->', newState.status);
+  });
   connection.on('error', (error) => {
     console.error('Voice connection error:', error.message || error);
   });
@@ -283,15 +387,28 @@ async function playNext(guildId) {
 
   try {
     console.log('Starting track:', track.title);
-    // Search results already contain SoundCloud stream metadata; use it directly
-    // to avoid resolving the same permalink a second time (which can return 404).
-    const result = track.soundCloudInfo
-      ? await play.stream_from_info(track.soundCloudInfo)
-      : await play.stream(track.url);
-    const options = { metadata: track };
-    if (result.type) options.inputType = result.type;
-    queue.player.play(createAudioResource(result.stream, options));
-    console.log('Now playing:', track.title);
+    let inputStream;
+    let inputType;
+
+    if (track.source === 'soundcloud' && track.soundCloudInfo) {
+      // FFmpeg reads SoundCloud's HLS manifest directly and outputs Ogg/Opus,
+      // avoiding the library's HLS segment parser for AAC fragmented MP4.
+      const direct = await createSoundCloudOpusStream(track.soundCloudInfo, track.title);
+      track.ffmpegProcess = direct.process;
+      inputStream = direct.stream;
+      inputType = StreamType.OggOpus;
+    } else {
+      const result = await play.stream(track.url);
+      inputStream = result.stream;
+      inputType = result.type || StreamType.Arbitrary;
+    }
+
+    const resource = createAudioResource(inputStream, { metadata: track, inputType });
+    resource.playStream.on('error', error => {
+      console.error('Audio resource stream error:', error.message || error);
+    });
+    queue.player.play(resource);
+    console.log('Audio resource queued:', track.title, '| input type:', inputType);
   } catch (error) {
     console.error('Track failed:', track.title, error.stack || error);
     queue.current = null;
