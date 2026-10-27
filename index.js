@@ -127,7 +127,7 @@ async function findSoundCloudTrack(query, requestedBy) {
 
   return {
     title: item.title || query,
-    url: item.url,
+    url: item.permalink || item.permalink_url || item.url,
     duration: item.durationRaw || durationText(item.durationInSec || 0),
     requestedBy,
     searchQuery: query,
@@ -161,7 +161,7 @@ async function findTrack(query, requestedBy) {
       const sound = await play.soundcloud(input);
       return {
         title: sound.name || sound.title || 'SoundCloud track',
-        url: sound.url || input,
+        url: sound.permalink || input,
         duration: durationText(sound.durationInSec || 0),
         requestedBy,
         searchQuery: sound.name || sound.title || input,
