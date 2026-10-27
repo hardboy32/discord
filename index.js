@@ -128,6 +128,35 @@ function durationText(input) {
   return minutes + ':' + String(seconds).padStart(2, '0');
 }
 
+function preferModernSoundCloudFormats(trackInfo, trackTitle = 'unknown track') {
+  const formats = Array.isArray(trackInfo && trackInfo.formats) ? trackInfo.formats : [];
+  const hls = formats.filter(item => item && item.format && item.format.protocol === 'hls');
+  const aac = hls.filter(item =>
+    /aac/i.test(String(item.preset || '')) ||
+    /aac/i.test(String(item.format.mime_type || ''))
+  );
+
+  // SoundCloud deprecated its old MP3/Opus HLS transcodings. Prefer the
+  // newer AAC HLS format when the API exposes it.
+  const selected = aac.length ? aac : hls;
+  if (!selected.length) {
+    console.warn('SoundCloud has no HLS audio format for:', trackTitle);
+    return trackInfo;
+  }
+
+  console.log(
+    'SoundCloud formats for "' + String(trackTitle).slice(0, 100) + '": ' +
+    selected.map(item => String(item.preset || 'unknown') + '/' +
+      String(item.format.mime_type || 'unknown')).join(', ')
+  );
+
+  // Keep the library's class prototype so stream_from_info still recognizes
+  // this as its native SoundCloudTrack object.
+  return Object.assign(Object.create(Object.getPrototypeOf(trackInfo)), trackInfo, {
+    formats: selected,
+  });
+}
+
 async function findSoundCloudTrack(query, requestedBy) {
   await ensureSoundCloudReady();
   const results = await play.search(query, {
@@ -146,7 +175,7 @@ async function findSoundCloudTrack(query, requestedBy) {
       searchQuery: query,
       source: 'soundcloud',
       fallbackAttempted: true,
-      soundCloudInfo: item,
+      soundCloudInfo: preferModernSoundCloudFormats(item, item.name || item.title || query),
     }));
 
   if (!candidates.length) return null;
@@ -185,7 +214,7 @@ async function findTrack(query, requestedBy) {
         searchQuery: sound.name || sound.title || input,
         source: 'soundcloud',
         fallbackAttempted: true,
-        soundCloudInfo: sound,
+        soundCloudInfo: preferModernSoundCloudFormats(sound, sound.name || sound.title || input),
       };
     }
 
