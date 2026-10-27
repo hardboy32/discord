@@ -332,38 +332,119 @@ async function findTrack(query, requestedBy) {
   const input = query.trim();
 
   if (/^https?:\/\//i.test(input)) {
-    if (play.yt_validate(input) === 'video') {
-      const info = await play.video_basic_info(input);
-      const video = info.video_details;
-      return {
-        title: video.title || 'YouTube track',
-        url: video.url || input,
-        duration: video.durationRaw || durationText(video.durationInSec),
-        requestedBy,
-        searchQuery: video.title || input,
-        source: 'youtube',
-      };
+    let parsed;
+    try {
+      parsed = new URL(input);
+    } catch {
+      throw new Error('That URL is invalid. Provide a YouTube video or SoundCloud track link.');
     }
 
-    if (/soundcloud\.com|snd\.sc/i.test(input)) {
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const isYouTubeHost =
+      hostname === 'youtu.be' ||
+      hostname === 'youtube.com' ||
+      hostname.endsWith('.youtube.com') ||
+      hostname === 'youtube-nocookie.com' ||
+      hostname.endsWith('.youtube-nocookie.com');
+
+    if (isYouTubeHost) {
+      let videoId = '';
+      if (hostname === 'youtu.be') {
+        videoId = parsed.pathname.split('/').filter(Boolean)[0] || '';
+      } else if (parsed.pathname === '/watch') {
+        videoId = parsed.searchParams.get('v') || '';
+      } else {
+        const match = parsed.pathname.match(/^\/(?:shorts|live|embed|v)\/([^/?]+)/i);
+        if (match) videoId = match[1];
+      }
+
+      const normalizedUrl = /^[A-Za-z0-9_-]{11}$/.test(videoId)
+        ? 'https://www.youtube.com/watch?v=' + videoId
+        : input;
+
+      if (play.yt_validate(normalizedUrl) === 'video') {
+        const info = await play.video_basic_info(normalizedUrl);
+        const video = info.video_details;
+        return {
+          title: video.title || 'YouTube track',
+          url: video.url || normalizedUrl,
+          duration: video.durationRaw || durationText(video.durationInSec),
+          requestedBy,
+          searchQuery: video.title || normalizedUrl,
+          source: 'youtube',
+        };
+      }
+
+      console.warn('Rejected YouTube URL format:', hostname, parsed.pathname);
+      throw new Error('That YouTube link is not a supported single video. Use a video, Shorts, or youtu.be link rather than a channel or playlist.');
+    }
+
+    const isSoundCloudHost =
+      hostname === 'snd.sc' ||
+      hostname === 'soundcloud.com' ||
+      hostname.endsWith('.soundcloud.com');
+
+    if (isSoundCloudHost) {
       await ensureSoundCloudReady();
-    }
+      let soundCloudUrl = input;
+      let isTrack = false;
+      try {
+        isTrack = play.so_validate(soundCloudUrl) === 'track';
+      } catch {
+        isTrack = false;
+      }
 
-    if (play.so_validate(input) === 'track') {
-      const sound = await play.soundcloud(input);
+      if (!isTrack) {
+        try {
+          const response = await fetch(input, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: { 'user-agent': 'Mozilla/5.0' },
+            signal: AbortSignal.timeout(12000),
+          });
+          soundCloudUrl = response.url || input;
+          if (response.body) await response.body.cancel().catch(() => {});
+        } catch (error) {
+          console.warn('Could not resolve SoundCloud share link:', error.message || error);
+        }
+      }
+
+      let resolvedHost = '';
+      try {
+        resolvedHost = new URL(soundCloudUrl).hostname.toLowerCase().replace(/^www\./, '');
+      } catch {
+        resolvedHost = '';
+      }
+      const resolvedIsSoundCloud =
+        resolvedHost === 'soundcloud.com' || resolvedHost.endsWith('.soundcloud.com');
+
+      let resolvedIsTrack = false;
+      try {
+        resolvedIsTrack = resolvedIsSoundCloud && play.so_validate(soundCloudUrl) === 'track';
+      } catch {
+        resolvedIsTrack = false;
+      }
+
+      if (!resolvedIsTrack) {
+        console.warn('Unsupported SoundCloud URL format:', resolvedHost || hostname);
+        throw new Error('I could not identify a track in that SoundCloud link. Open the track in SoundCloud and copy its full track URL.');
+      }
+
+      const sound = await play.soundcloud(soundCloudUrl);
       return {
         title: sound.name || sound.title || 'SoundCloud track',
-        url: sound.permalink || input,
+        url: sound.permalink || soundCloudUrl,
         duration: durationText(sound.durationInSec || 0),
         requestedBy,
-        searchQuery: sound.name || sound.title || input,
+        searchQuery: sound.name || sound.title || soundCloudUrl,
         source: 'soundcloud',
         fallbackAttempted: true,
-        soundCloudInfo: preferModernSoundCloudFormats(sound, sound.name || sound.title || input),
+        soundCloudInfo: preferModernSoundCloudFormats(sound, sound.name || sound.title || soundCloudUrl),
       };
     }
 
-    throw new Error('Unsupported link. Provide a YouTube or SoundCloud track URL.');
+    console.warn('Unsupported /play URL host:', hostname);
+    throw new Error('Unsupported link. Provide a YouTube video or SoundCloud track URL.');
   }
 
   const results = await play.search(input, { limit: 1 });
@@ -381,7 +462,6 @@ async function findTrack(query, requestedBy) {
     source: 'youtube',
   };
 }
-
 async function connectVoice(guild, channel, queue) {
   if (
     queue.connection &&
