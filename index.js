@@ -2,7 +2,6 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const ffmpegPath = require('ffmpeg-static');
 const {
   ActivityType,
@@ -172,7 +171,7 @@ function preferModernSoundCloudFormats(trackInfo, trackTitle = 'unknown track') 
   });
 }
 
-async function createSoundCloudOpusStream(trackInfo, trackTitle) {
+async function resolveSoundCloudPlaylistUrl(trackInfo, trackTitle) {
   await ensureSoundCloudReady();
   if (!soundCloudClientId) throw new Error('SoundCloud client ID is unavailable.');
   if (!ffmpegPath) throw new Error('ffmpeg-static binary is unavailable on this host.');
@@ -197,7 +196,6 @@ async function createSoundCloudOpusStream(trackInfo, trackTitle) {
     try {
       const endpoint = new URL(format.url);
       endpoint.searchParams.set('client_id', soundCloudClientId);
-
       const response = await fetch(endpoint, {
         headers: { 'user-agent': 'Mozilla/5.0 DiscordMusicBot/1.0' },
       });
@@ -209,54 +207,16 @@ async function createSoundCloudOpusStream(trackInfo, trackTitle) {
         throw new Error('SoundCloud media endpoint did not return a playlist URL.');
       }
 
-      console.log('Opening SoundCloud AAC/HLS directly with FFmpeg:', trackTitle, '|', format.preset || 'HLS');
-      const child = spawn(ffmpegPath, [
-        '-hide_banner',
-        '-loglevel', 'warning',
-        '-nostdin',
-        '-reconnect', '1',
-        '-reconnect_streamed', '1',
-        '-reconnect_delay_max', '5',
-        '-i', playlistUrl,
-        '-vn',
-        '-c:a', 'libopus',
-        '-application', 'audio',
-        '-b:a', '128k',
-        '-ar', '48000',
-        '-ac', '2',
-        '-f', 'ogg',
-        'pipe:1',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
-
-      let stderrTail = '';
-      child.stderr.on('data', chunk => {
-        stderrTail = (stderrTail + chunk.toString()).slice(-3000);
-      });
-      child.on('error', error => {
-        console.error('SoundCloud FFmpeg spawn failed:', error.message);
-      });
-      child.on('close', code => {
-        if (code !== 0) {
-          const safeLines = stderrTail.split('\n').map(line =>
-            line.includes('://') ? '[FFmpeg line with URL omitted]' : line
-          ).join('\n').trim();
-          console.error('SoundCloud FFmpeg exited with code', code, safeLines || '(no FFmpeg details)');
-          if (!child.stdout.destroyed) child.stdout.destroy(new Error('FFmpeg exited with code ' + code));
-        } else {
-          console.log('SoundCloud FFmpeg finished:', trackTitle);
-        }
-      });
-
-      return { stream: child.stdout, process: child };
+      console.log('Resolved SoundCloud HLS for FFmpeg:', trackTitle, '|', format.preset || 'HLS');
+      return playlistUrl;
     } catch (error) {
       lastError = error;
-      console.warn('SoundCloud HLS format failed:', format.preset || 'unknown', error.message || error);
+      console.warn('SoundCloud HLS URL resolution failed:', format.preset || 'unknown', error.message || error);
     }
   }
 
   throw lastError || new Error('All SoundCloud HLS formats failed.');
 }
-
 async function findSoundCloudTrack(query, requestedBy) {
   await ensureSoundCloudReady();
   const results = await play.search(query, {
@@ -387,28 +347,27 @@ async function playNext(guildId) {
 
   try {
     console.log('Starting track:', track.title);
-    let inputStream;
-    let inputType;
+    let resource;
 
     if (track.source === 'soundcloud' && track.soundCloudInfo) {
-      // FFmpeg reads SoundCloud's HLS manifest directly and outputs Ogg/Opus,
-      // avoiding the library's HLS segment parser for AAC fragmented MP4.
-      const direct = await createSoundCloudOpusStream(track.soundCloudInfo, track.title);
-      track.ffmpegProcess = direct.process;
-      inputStream = direct.stream;
-      inputType = StreamType.OggOpus;
+      // Pass the HLS URL directly to discord.js voice. Its internal FFmpeg
+      // transformer handles AAC HLS and emits the PCM/Opus pipeline.
+      const playlistUrl = await resolveSoundCloudPlaylistUrl(track.soundCloudInfo, track.title);
+      resource = createAudioResource(playlistUrl, { metadata: track });
+      console.log('SoundCloud resource created with bundled FFmpeg:', track.title);
     } else {
       const result = await play.stream(track.url);
-      inputStream = result.stream;
-      inputType = result.type || StreamType.Arbitrary;
+      resource = createAudioResource(result.stream, {
+        metadata: track,
+        inputType: result.type || StreamType.Arbitrary,
+      });
     }
 
-    const resource = createAudioResource(inputStream, { metadata: track, inputType });
     resource.playStream.on('error', error => {
       console.error('Audio resource stream error:', error.message || error);
     });
     queue.player.play(resource);
-    console.log('Audio resource queued:', track.title, '| input type:', inputType);
+    console.log('Audio resource queued:', track.title);
   } catch (error) {
     console.error('Track failed:', track.title, error.stack || error);
     queue.current = null;
