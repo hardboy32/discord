@@ -7,6 +7,7 @@ const {
   Client,
   EmbedBuilder,
   Events,
+  MessageFlags,
   GatewayIntentBits,
   PermissionFlagsBits,
   REST,
@@ -99,6 +100,25 @@ function durationText(input) {
   return minutes + ':' + String(seconds).padStart(2, '0');
 }
 
+async function findSoundCloudTrack(query, requestedBy) {
+  const results = await play.search(query, {
+    limit: 1,
+    source: { soundcloud: 'tracks' },
+  });
+  const item = Array.isArray(results) ? results[0] : null;
+  if (!item || !item.url) return null;
+
+  return {
+    title: item.title || query,
+    url: item.url,
+    duration: item.durationRaw || durationText(item.durationInSec || 0),
+    requestedBy,
+    searchQuery: query,
+    source: 'soundcloud',
+    fallbackAttempted: true,
+  };
+}
+
 async function findTrack(query, requestedBy) {
   const input = query.trim();
 
@@ -111,6 +131,8 @@ async function findTrack(query, requestedBy) {
         url: video.url || input,
         duration: video.durationRaw || durationText(video.durationInSec),
         requestedBy,
+        searchQuery: video.title || input,
+        source: 'youtube',
       };
     }
 
@@ -121,6 +143,9 @@ async function findTrack(query, requestedBy) {
         url: sound.url || input,
         duration: durationText(sound.durationInSec || 0),
         requestedBy,
+        searchQuery: sound.name || sound.title || input,
+        source: 'soundcloud',
+        fallbackAttempted: true,
       };
     }
 
@@ -138,6 +163,8 @@ async function findTrack(query, requestedBy) {
     url: item.url,
     duration: item.durationRaw || 'نامشخص',
     requestedBy,
+    searchQuery: input,
+    source: 'youtube',
   };
 }
 
@@ -196,7 +223,21 @@ async function playNext(guildId) {
     console.error('Track failed:', track.title, error.stack || error);
     queue.current = null;
 
-    if (queue.textChannelId) {
+    let retryingOnSoundCloud = false;
+    if (track.source !== 'soundcloud' && !track.fallbackAttempted) {
+      try {
+        const fallback = await findSoundCloudTrack(track.searchQuery || track.title, track.requestedBy);
+        if (fallback && fallback.url !== track.url) {
+          queue.tracks.unshift(fallback);
+          retryingOnSoundCloud = true;
+          console.warn('YouTube playback failed; retrying from SoundCloud:', fallback.title);
+        }
+      } catch (fallbackError) {
+        console.warn('SoundCloud fallback search failed:', fallbackError.message || fallbackError);
+      }
+    }
+
+    if (!retryingOnSoundCloud && queue.textChannelId) {
       const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
       if (channel && channel.isTextBased()) {
         await channel.send('پخش آهنگ «' + track.title.slice(0, 140) + '» ناموفق بود؛ آهنگ بعدی را امتحان می‌کنم.').catch(() => {});
@@ -212,7 +253,7 @@ async function respond(interaction, content) {
   if (interaction.deferred || interaction.replied) {
     return interaction.editReply({ content });
   }
-  return interaction.reply({ content, ephemeral: true });
+  return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
 async function userSharesVoice(interaction, queue) {
@@ -332,7 +373,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     switch (interaction.commandName) {
       case 'ping':
-        return interaction.reply({ content: 'Pong! ' + client.ws.ping + ' ms', ephemeral: true });
+        return interaction.reply({ content: 'Pong! ' + client.ws.ping + ' ms', flags: MessageFlags.Ephemeral });
 
       case 'help': {
         const embed = new EmbedBuilder()
@@ -343,11 +384,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
             { name: 'مدیریت', value: '/kick /ban /timeout /untimeout /clear /slowmode /lock /unlock /warn /warnings /clearwarns' },
           )
           .setFooter({ text: 'مجوز دستورات مدیریتی طبق تنظیمات Discord بررسی می‌شود.' });
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       }
 
       case 'join': {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const member = await interaction.guild.members.fetch(interaction.user.id);
         if (!member.voice.channel) return respond(interaction, 'اول وارد Voice Channel شو.');
         const queue = getQueue(interaction.guildId);
@@ -357,7 +398,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       case 'play': {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const member = await interaction.guild.members.fetch(interaction.user.id);
         if (!member.voice.channel) return respond(interaction, 'اول وارد Voice Channel شو، بعد /play را بزن.');
         const track = await findTrack(interaction.options.getString('query', true), interaction.user.tag || interaction.user.username);
@@ -426,7 +467,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       case 'kick': {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const user = interaction.options.getUser('user', true);
         const reason = interaction.options.getString('reason') || 'No reason provided';
         const member = await interaction.guild.members.fetch(user.id);
@@ -435,7 +476,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       case 'ban': {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const user = interaction.options.getUser('user', true);
         const reason = interaction.options.getString('reason') || 'No reason provided';
         await interaction.guild.members.ban(user.id, { reason });
@@ -443,7 +484,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       case 'timeout': {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const user = interaction.options.getUser('user', true);
         const minutes = interaction.options.getInteger('minutes', true);
         const reason = interaction.options.getString('reason') || 'No reason provided';
@@ -453,7 +494,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       case 'untimeout': {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const user = interaction.options.getUser('user', true);
         const reason = interaction.options.getString('reason') || 'Timeout removed by moderator';
         const member = await interaction.guild.members.fetch(user.id);
