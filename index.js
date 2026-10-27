@@ -620,7 +620,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
-  readyClient.user.setActivity(null);
+  readyClient.user.setPresence({ activities: [] });
   console.log('Bot activity is cleared. Use /activity to set it.');
   try {
     await registerCommands();
@@ -660,7 +660,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const type = interaction.options.getString('type', true);
         const text = (interaction.options.getString('text') || '').trim();
         if (type === 'clear') {
-          client.user.setActivity(null);
+          client.user.setPresence({ activities: [] });
           return respond(interaction, 'Bot activity cleared.');
         }
         if (!text) return respond(interaction, 'Enter activity text, for example: /activity type:Playing text:Chess.');
