@@ -771,7 +771,8 @@ client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || !client.user) return;
 
   const isMentioned = message.mentions.users.has(client.user.id);
-  const hasNamePrefix = /^\(محمد\)(?:\s+|$)/u.test(message.content.trimStart());
+  const namePrefixPattern = /^\s*(?:\(\s*محمد(?:\s+ربات)?\s*\)|محمد(?:\s+ربات)?)(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/u;
+  const hasNamePrefix = namePrefixPattern.test(message.content);
   let isReplyToBot = false;
   if (message.reference && message.reference.messageId) {
     try {
@@ -785,7 +786,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (!hasNamePrefix && !isMentioned && !isReplyToBot) return;
 
   const prompt = message.content
-    .replace(/^\s*\(محمد\)\s*/u, '')
+    .replace(namePrefixPattern, '')
     .replace(new RegExp('<@!?'+ client.user.id +'>', 'g'), '')
     .trim();
 
