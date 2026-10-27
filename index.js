@@ -226,7 +226,7 @@ async function createSoundCloudPcmStream(trackInfo, trackTitle) {
     '-loglevel', 'warning',
     '-nostdin',
     '-user_agent', 'Mozilla/5.0 DiscordMusicBot/1.0',
-    '-headers', 'Origin: https://soundcloud.com\\r\\nReferer: https://soundcloud.com/\\r\\n',
+    '-headers', 'Origin: https://soundcloud.com\r\nReferer: https://soundcloud.com/\r\n',
     '-i', playlistUrl,
     '-vn',
     '-acodec', 'pcm_s16le',
