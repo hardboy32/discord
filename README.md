@@ -29,7 +29,7 @@ Branch: `main`
 
 **Build Command**
 ```bash
-npm install --omit=dev
+npm install --omit=dev --no-audit --no-fund
 ```
 
 **Start Command**
@@ -37,10 +37,12 @@ npm install --omit=dev
 npm start
 ```
 
+The buildpack currently selects Node.js 20 even though the voice library requires Node.js 22.12 or newer. This project includes the Node.js 22.23.4 binary as an npm dependency, and `npm start` uses the local binary. On startup, the logs should print `v22.23.4` before the bot login message.
+
 Add these Environment Variables in Infrlo:
 - `DISCORD_TOKEN` — bot token from Discord Developer Portal
 - `DISCORD_CLIENT_ID` — Application ID from Discord Developer Portal
-- `DISCORD_GUILD_ID` — optional test server ID. Recommended during setup so slash commands appear quickly; leave blank to register global commands.
+- `DISCORD_GUILD_ID` — optional test server ID. For a public bot, leave it blank so commands register globally.
 
 Do not put the real token in GitHub or in `.env.example`. Add it only to Infrlo's Environment Variables. Redeploy after setting the variables.
 
@@ -51,4 +53,4 @@ In Discord Developer Portal, create an application and add its Bot. Use OAuth2 U
 ## Notes
 - Music source extraction depends on upstream YouTube/SoundCloud changes and network access from the host. The code does not bundle a large static FFmpeg binary, to keep deployment lighter.
 - Warning records are saved to `data/warnings.json`. They may be lost when Infrlo replaces an ephemeral container unless persistent storage is enabled.
-- Node.js 22.x is used because the current voice library requires Node.js 22.12 or newer.
+- The Node.js binary is installed locally from npm to bypass an Infrlo buildpack that currently uses Node.js 20 for this app. This adds some download size to the build.
