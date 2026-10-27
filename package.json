@@ -5,7 +5,7 @@
   "description": "Discord slash-command music and moderation bot for Infrlo",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node -v && node index.js",
     "check": "node --check index.js"
   },
   "engines": {
@@ -15,6 +15,7 @@
     "@discordjs/voice": "0.19.2",
     "discord.js": "^14.27.0",
     "dotenv": "^17.2.3",
+    "node": "22.23.4",
     "opusscript": "^0.0.8",
     "play-dl": "^1.9.7"
   }
