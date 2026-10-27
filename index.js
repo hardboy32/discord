@@ -119,21 +119,27 @@ function durationText(input) {
 async function findSoundCloudTrack(query, requestedBy) {
   await ensureSoundCloudReady();
   const results = await play.search(query, {
-    limit: 1,
+    limit: 5,
     source: { soundcloud: 'tracks' },
   });
-  const item = Array.isArray(results) ? results[0] : null;
-  if (!item || !item.url) return null;
+  if (!Array.isArray(results) || !results.length) return null;
 
-  return {
-    title: item.title || query,
-    url: item.permalink || item.permalink_url || item.url,
-    duration: item.durationRaw || durationText(item.durationInSec || 0),
-    requestedBy,
-    searchQuery: query,
-    source: 'soundcloud',
-    fallbackAttempted: true,
-  };
+  const candidates = results
+    .filter(item => item && (item.permalink || item.permalink_url || item.url))
+    .map(item => ({
+      title: item.name || item.title || query,
+      url: item.permalink || item.permalink_url || item.url,
+      duration: item.durationRaw || durationText(item.durationInSec || 0),
+      requestedBy,
+      searchQuery: query,
+      source: 'soundcloud',
+      fallbackAttempted: true,
+      soundCloudInfo: item,
+    }));
+
+  if (!candidates.length) return null;
+  candidates[0].alternatives = candidates.slice(1);
+  return candidates[0];
 }
 
 async function findTrack(query, requestedBy) {
@@ -167,6 +173,7 @@ async function findTrack(query, requestedBy) {
         searchQuery: sound.name || sound.title || input,
         source: 'soundcloud',
         fallbackAttempted: true,
+        soundCloudInfo: sound,
       };
     }
 
@@ -235,7 +242,11 @@ async function playNext(guildId) {
 
   try {
     console.log('Starting track:', track.title);
-    const result = await play.stream(track.url);
+    // Search results already contain SoundCloud stream metadata; use it directly
+    // to avoid resolving the same permalink a second time (which can return 404).
+    const result = track.soundCloudInfo
+      ? await play.stream_from_info(track.soundCloudInfo)
+      : await play.stream(track.url);
     const options = { metadata: track };
     if (result.type) options.inputType = result.type;
     queue.player.play(createAudioResource(result.stream, options));
@@ -245,7 +256,16 @@ async function playNext(guildId) {
     queue.current = null;
 
     let retryingOnSoundCloud = false;
-    if (track.source !== 'soundcloud' && !track.fallbackAttempted) {
+
+    if (track.source === 'soundcloud' && Array.isArray(track.alternatives) && track.alternatives.length) {
+      const [nextCandidate, ...remainingCandidates] = track.alternatives;
+      nextCandidate.alternatives = remainingCandidates;
+      queue.tracks.unshift(nextCandidate);
+      retryingOnSoundCloud = true;
+      console.warn('SoundCloud candidate failed; trying another result:', nextCandidate.title);
+    }
+
+    if (!retryingOnSoundCloud && track.source !== 'soundcloud' && !track.fallbackAttempted) {
       try {
         const fallback = await findSoundCloudTrack(track.searchQuery || track.title, track.requestedBy);
         if (fallback && fallback.url !== track.url) {
