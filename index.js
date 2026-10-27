@@ -63,6 +63,7 @@ const play = require('@iamtraction/play-dl');
 
 const TOKEN = (process.env.DISCORD_TOKEN || '').trim();
 const CLIENT_ID = (process.env.DISCORD_CLIENT_ID || '').trim();
+const BOT_OWNER_ID = (process.env.BOT_OWNER_ID || '').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
 
@@ -167,7 +168,7 @@ function getQueue(guildId) {
 
 function durationText(input) {
   const number = Number(input);
-  if (!Number.isFinite(number) || number < 0) return 'نامشخص';
+  if (!Number.isFinite(number) || number < 0) return 'Unknown';
   const total = Math.floor(number);
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -362,19 +363,19 @@ async function findTrack(query, requestedBy) {
       };
     }
 
-    throw new Error('این لینک پشتیبانی نمی‌شود؛ لینک آهنگ YouTube یا SoundCloud را بده.');
+    throw new Error('Unsupported link. Provide a YouTube or SoundCloud track URL.');
   }
 
   const results = await play.search(input, { limit: 1 });
   const item = Array.isArray(results) ? results[0] : null;
   if (!item || !item.url) {
-    throw new Error('آهنگی پیدا نشد؛ اسم آهنگ را دقیق‌تر بنویس یا لینک بده.');
+    throw new Error('No track found. Try a more specific title or provide a YouTube or SoundCloud URL.');
   }
 
   return {
     title: item.title || input,
     url: item.url,
-    duration: item.durationRaw || 'نامشخص',
+    duration: item.durationRaw || 'Unknown',
     requestedBy,
     searchQuery: input,
     source: 'youtube',
@@ -416,7 +417,7 @@ async function connectVoice(guild, channel, queue) {
     try { connection.destroy(); } catch (_) {}
     queue.connection = null;
     queue.voiceChannelId = null;
-    throw new Error('اتصال به Voice موفق نشد. مجوز Connect و Speak را به ربات بده.');
+    throw new Error('Could not connect to voice. Make sure the bot has Connect and Speak permissions.');
   }
   return connection;
 }
@@ -488,7 +489,7 @@ async function playNext(guildId) {
     if (!retryingOnSoundCloud && queue.textChannelId) {
       const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
       if (channel && channel.isTextBased()) {
-        await channel.send('پخش آهنگ «' + track.title.slice(0, 140) + '» ناموفق بود؛ آهنگ بعدی را امتحان می‌کنم.').catch(() => {});
+        await channel.send('Failed to play "' + track.title.slice(0, 140) + '". Trying the next track.').catch(() => {});
       }
     }
     setTimeout(() => void playNext(guildId), 800);
@@ -502,6 +503,21 @@ async function respond(interaction, content) {
     return interaction.editReply({ content });
   }
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+}
+
+async function isBotOwner(userId) {
+  if (BOT_OWNER_ID) return userId === BOT_OWNER_ID;
+
+  try {
+    const application = await client.application.fetch();
+    const owner = application.owner;
+    if (owner && owner.id && owner.constructor.name !== 'Team') {
+      return userId === owner.id;
+    }
+  } catch (error) {
+    console.warn('Could not verify the application owner automatically:', error.message || error);
+  }
+  return false;
 }
 
 async function userSharesVoice(interaction, queue) {
@@ -525,56 +541,65 @@ const moderatorPermissions = {
 };
 
 const commands = [
-  new SlashCommandBuilder().setName('play').setDescription('پخش آهنگ با نام یا لینک')
-    .addStringOption(o => o.setName('query').setDescription('نام آهنگ یا لینک YouTube / SoundCloud').setRequired(true).setMaxLength(300)),
-  new SlashCommandBuilder().setName('join').setDescription('ورود به Voice Channel شما'),
-  new SlashCommandBuilder().setName('queue').setDescription('نمایش صف آهنگ‌ها'),
-  new SlashCommandBuilder().setName('skip').setDescription('رفتن به آهنگ بعدی'),
-  new SlashCommandBuilder().setName('pause').setDescription('مکث پخش آهنگ'),
-  new SlashCommandBuilder().setName('resume').setDescription('ادامه پخش آهنگ'),
-  new SlashCommandBuilder().setName('stop').setDescription('توقف پخش و خالی کردن صف'),
-  new SlashCommandBuilder().setName('leave').setDescription('خروج ربات از Voice'),
+  new SlashCommandBuilder().setName('play').setDescription('Play a track by title or URL')
+    .addStringOption(o => o.setName('query').setDescription('Track title or YouTube / SoundCloud URL').setRequired(true).setMaxLength(300)),
+  new SlashCommandBuilder().setName('join').setDescription('Join your current voice channel'),
+  new SlashCommandBuilder().setName('queue').setDescription('Show the music queue'),
+  new SlashCommandBuilder().setName('skip').setDescription('Skip the current track'),
+  new SlashCommandBuilder().setName('pause').setDescription('Pause playback'),
+  new SlashCommandBuilder().setName('resume').setDescription('Resume playback'),
+  new SlashCommandBuilder().setName('stop').setDescription('Stop playback and clear the queue'),
+  new SlashCommandBuilder().setName('leave').setDescription('Leave the voice channel'),
 
-  new SlashCommandBuilder().setName('kick').setDescription('اخراج عضو از سرور')
+  new SlashCommandBuilder().setName('kick').setDescription('Kick a server member')
     .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
-    .addUserOption(o => o.setName('user').setDescription('عضو موردنظر').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('دلیل').setMaxLength(400)),
-  new SlashCommandBuilder().setName('ban').setDescription('بن کردن کاربر')
+    .addUserOption(o => o.setName('user').setDescription('Member to kick').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the action').setMaxLength(400)),
+  new SlashCommandBuilder().setName('ban').setDescription('Ban a user')
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
-    .addUserOption(o => o.setName('user').setDescription('کاربر موردنظر').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('دلیل').setMaxLength(400)),
-  new SlashCommandBuilder().setName('timeout').setDescription('محدودیت موقت عضو')
+    .addUserOption(o => o.setName('user').setDescription('User to ban').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the action').setMaxLength(400)),
+  new SlashCommandBuilder().setName('timeout').setDescription('Temporarily time out a member')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption(o => o.setName('user').setDescription('عضو موردنظر').setRequired(true))
-    .addIntegerOption(o => o.setName('minutes').setDescription('مدت به دقیقه').setRequired(true).setMinValue(1).setMaxValue(40320))
-    .addStringOption(o => o.setName('reason').setDescription('دلیل').setMaxLength(400)),
-  new SlashCommandBuilder().setName('untimeout').setDescription('برداشتن محدودیت عضو')
+    .addUserOption(o => o.setName('user').setDescription('Member to time out').setRequired(true))
+    .addIntegerOption(o => o.setName('minutes').setDescription('Duration in minutes').setRequired(true).setMinValue(1).setMaxValue(40320))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the action').setMaxLength(400)),
+  new SlashCommandBuilder().setName('untimeout').setDescription('Remove a member timeout')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption(o => o.setName('user').setDescription('عضو موردنظر').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('دلیل').setMaxLength(400)),
-  new SlashCommandBuilder().setName('clear').setDescription('پاک کردن ۱ تا ۱۰۰ پیام اخیر')
+    .addUserOption(o => o.setName('user').setDescription('Member to untimeout').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the action').setMaxLength(400)),
+  new SlashCommandBuilder().setName('clear').setDescription('Delete 1 to 100 recent messages')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-    .addIntegerOption(o => o.setName('amount').setDescription('تعداد پیام').setRequired(true).setMinValue(1).setMaxValue(100)),
-  new SlashCommandBuilder().setName('slowmode').setDescription('تنظیم کندکننده پیام کانال')
+    .addIntegerOption(o => o.setName('amount').setDescription('Number of messages to delete').setRequired(true).setMinValue(1).setMaxValue(100)),
+  new SlashCommandBuilder().setName('slowmode').setDescription('Set this channel slowmode')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addIntegerOption(o => o.setName('seconds').setDescription('ثانیه؛ صفر برای خاموش کردن').setRequired(true).setMinValue(0).setMaxValue(21600)),
-  new SlashCommandBuilder().setName('lock').setDescription('قفل کردن کانال')
+    .addIntegerOption(o => o.setName('seconds').setDescription('Seconds; use 0 to disable').setRequired(true).setMinValue(0).setMaxValue(21600)),
+  new SlashCommandBuilder().setName('lock').setDescription('Lock this channel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  new SlashCommandBuilder().setName('unlock').setDescription('باز کردن قفل کانال')
+  new SlashCommandBuilder().setName('unlock').setDescription('Unlock this channel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  new SlashCommandBuilder().setName('warn').setDescription('ثبت اخطار برای عضو')
+  new SlashCommandBuilder().setName('warn').setDescription('Add a warning to a member')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption(o => o.setName('user').setDescription('عضو موردنظر').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('دلیل اخطار').setRequired(true).setMaxLength(400)),
-  new SlashCommandBuilder().setName('warnings').setDescription('نمایش اخطارهای عضو')
+    .addUserOption(o => o.setName('user').setDescription('Member to warn').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('Warning reason').setRequired(true).setMaxLength(400)),
+  new SlashCommandBuilder().setName('warnings').setDescription('List warnings for a member')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption(o => o.setName('user').setDescription('عضو موردنظر').setRequired(true)),
-  new SlashCommandBuilder().setName('clearwarns').setDescription('پاک کردن اخطارهای عضو')
+    .addUserOption(o => o.setName('user').setDescription('Member to check').setRequired(true)),
+  new SlashCommandBuilder().setName('clearwarns').setDescription('Clear warnings for a member')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .addUserOption(o => o.setName('user').setDescription('عضو موردنظر').setRequired(true)),
+    .addUserOption(o => o.setName('user').setDescription('Member whose warnings will be cleared').setRequired(true)),
 
-  new SlashCommandBuilder().setName('ping').setDescription('بررسی وضعیت ربات'),
-  new SlashCommandBuilder().setName('help').setDescription('نمایش فهرست دستورات'),
+  new SlashCommandBuilder().setName('activity').setDescription('Change the bot activity (bot owner only)')
+    .addStringOption(o => o.setName('type').setDescription('Activity type').setRequired(true).addChoices(
+      { name: 'Playing', value: 'playing' },
+      { name: 'Listening to', value: 'listening' },
+      { name: 'Watching', value: 'watching' },
+      { name: 'Competing in', value: 'competing' },
+      { name: 'Clear activity', value: 'clear' },
+    ))
+    .addStringOption(o => o.setName('text').setDescription('Activity text (up to 128 characters)').setMaxLength(128)),
+  new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
+  new SlashCommandBuilder().setName('help').setDescription('Show the command list'),
 ].map(command => command.toJSON());
 
 async function registerCommands() {
@@ -595,7 +620,8 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
-  readyClient.user.setActivity('music + moderation', { type: ActivityType.Playing });
+  readyClient.user.setActivity(null);
+  console.log('Bot activity is cleared. Use /activity to set it.');
   try {
     await registerCommands();
   } catch (error) {
@@ -609,7 +635,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     const permission = moderatorPermissions[interaction.commandName];
     if (permission && (!interaction.memberPermissions || !interaction.memberPermissions.has(permission))) {
-      return respond(interaction, 'برای این دستور مجوز لازم را نداری.');
+      return respond(interaction, 'You do not have permission to use this command.');
     }
 
     const serverCommands = [
@@ -618,39 +644,69 @@ client.on(Events.InteractionCreate, async (interaction) => {
       'unlock', 'warn', 'warnings', 'clearwarns',
     ];
     if (serverCommands.includes(interaction.commandName) && !interaction.guild) {
-      return respond(interaction, 'این دستور فقط داخل سرور قابل استفاده است.');
+      return respond(interaction, 'This command can only be used in a server.');
     }
 
     switch (interaction.commandName) {
       case 'ping':
         return interaction.reply({ content: 'Pong! ' + client.ws.ping + ' ms', flags: MessageFlags.Ephemeral });
 
+      case 'activity': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        if (!(await isBotOwner(interaction.user.id))) {
+          return respond(interaction, 'Only the bot owner can change the global activity. Set BOT_OWNER_ID in Infrlo if automatic owner detection does not work.');
+        }
+
+        const type = interaction.options.getString('type', true);
+        const text = (interaction.options.getString('text') || '').trim();
+        if (type === 'clear') {
+          client.user.setActivity(null);
+          return respond(interaction, 'Bot activity cleared.');
+        }
+        if (!text) return respond(interaction, 'Enter activity text, for example: /activity type:Playing text:Chess.');
+
+        const activityTypes = {
+          playing: ActivityType.Playing,
+          listening: ActivityType.Listening,
+          watching: ActivityType.Watching,
+          competing: ActivityType.Competing,
+        };
+        const activityType = activityTypes[type];
+        if (!activityType) return respond(interaction, 'Unsupported activity type.');
+
+        client.user.setActivity(text, { type: activityType });
+        const label = type === 'listening' ? 'Listening to' :
+          type === 'watching' ? 'Watching' :
+          type === 'competing' ? 'Competing in' : 'Playing';
+        return respond(interaction, 'Bot activity updated: ' + label + ' ' + text);
+      }
+
       case 'help': {
         const embed = new EmbedBuilder()
           .setColor(0x5865F2)
-          .setTitle('ربات موزیک و مدیریت')
+          .setTitle('Music and Moderation Bot')
           .addFields(
-            { name: 'موزیک', value: '/play /join /queue /skip /pause /resume /stop /leave' },
-            { name: 'مدیریت', value: '/kick /ban /timeout /untimeout /clear /slowmode /lock /unlock /warn /warnings /clearwarns' },
+            { name: 'Music', value: '/play /join /queue /skip /pause /resume /stop /leave' },
+            { name: 'Moderation', value: '/kick /ban /timeout /untimeout /clear /slowmode /lock /unlock /warn /warnings /clearwarns' },
           )
-          .setFooter({ text: 'مجوز دستورات مدیریتی طبق تنظیمات Discord بررسی می‌شود.' });
+          .setFooter({ text: 'Moderation commands require the matching Discord permissions.' });
         return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       }
 
       case 'join': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (!member.voice.channel) return respond(interaction, 'اول وارد Voice Channel شو.');
+        if (!member.voice.channel) return respond(interaction, 'Join a voice channel first.');
         const queue = getQueue(interaction.guildId);
         await connectVoice(interaction.guild, member.voice.channel, queue);
         queue.textChannelId = interaction.channelId;
-        return respond(interaction, 'وارد Voice شدم.');
+        return respond(interaction, 'Joined your voice channel.');
       }
 
       case 'play': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (!member.voice.channel) return respond(interaction, 'اول وارد Voice Channel شو، بعد /play را بزن.');
+        if (!member.voice.channel) return respond(interaction, 'Join a voice channel first, then run /play.');
         const track = await findTrack(interaction.options.getString('query', true), interaction.user.tag || interaction.user.username);
         const queue = getQueue(interaction.guildId);
         await connectVoice(interaction.guild, member.voice.channel, queue);
@@ -658,62 +714,62 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const position = queue.tracks.length + (queue.current ? 1 : 0);
         queue.tracks.push(track);
         if (!queue.current) void playNext(interaction.guildId);
-        return respond(interaction, 'به صف اضافه شد: ' + track.title.slice(0, 170) + '\nمدت: ' + track.duration + '\nجایگاه صف: ' + (position + 1));
+        return respond(interaction, 'Queued: ' + track.title.slice(0, 170) + '\nDuration: ' + track.duration + '\nQueue position: ' + (position + 1));
       }
 
       case 'queue': {
         const queue = getQueue(interaction.guildId);
         const lines = [];
-        if (queue.current) lines.push('🎵 در حال پخش: ' + queue.current.title + ' — ' + queue.current.duration);
+        if (queue.current) lines.push('🎵 Now playing: ' + queue.current.title + ' — ' + queue.current.duration);
         queue.tracks.slice(0, 15).forEach((track, index) => {
           lines.push((index + 1) + '. ' + track.title + ' — ' + track.duration);
         });
-        return respond(interaction, lines.length ? lines.join('\n').slice(0, 1900) : 'صف آهنگ خالی است.');
+        return respond(interaction, lines.length ? lines.join('\n').slice(0, 1900) : 'The queue is empty.');
       }
 
       case 'skip': {
         const queue = queues.get(interaction.guildId);
-        if (!queue || !queue.current) return respond(interaction, 'آهنگی در حال پخش نیست.');
-        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'برای کنترل پخش باید در همان Voice Channel ربات باشی.');
+        if (!queue || !queue.current) return respond(interaction, 'No track is currently playing.');
+        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
         queue.player.stop(true);
-        return respond(interaction, 'رفتم به آهنگ بعدی.');
+        return respond(interaction, 'Skipped to the next track.');
       }
 
       case 'pause': {
         const queue = queues.get(interaction.guildId);
-        if (!queue || !queue.current) return respond(interaction, 'آهنگی در حال پخش نیست.');
-        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'برای کنترل پخش باید در همان Voice Channel ربات باشی.');
-        return respond(interaction, queue.player.pause(true) ? 'پخش مکث شد.' : 'پخش قابل مکث نیست.');
+        if (!queue || !queue.current) return respond(interaction, 'No track is currently playing.');
+        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
+        return respond(interaction, queue.player.pause(true) ? 'Playback paused.' : 'Playback cannot be paused.');
       }
 
       case 'resume': {
         const queue = queues.get(interaction.guildId);
-        if (!queue || !queue.current) return respond(interaction, 'آهنگی برای ادامه نیست.');
-        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'برای کنترل پخش باید در همان Voice Channel ربات باشی.');
-        return respond(interaction, queue.player.unpause() ? 'پخش ادامه پیدا کرد.' : 'پخش در حالت مکث نیست.');
+        if (!queue || !queue.current) return respond(interaction, 'There is no track to resume.');
+        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
+        return respond(interaction, queue.player.unpause() ? 'Playback resumed.' : 'Playback is not paused.');
       }
 
       case 'stop': {
         const queue = queues.get(interaction.guildId);
-        if (!queue) return respond(interaction, 'صف پخش خالی است.');
-        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'برای کنترل پخش باید در همان Voice Channel ربات باشی.');
+        if (!queue) return respond(interaction, 'The queue is empty.');
+        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
-        return respond(interaction, 'پخش متوقف شد و صف خالی شد.');
+        return respond(interaction, 'Playback stopped and the queue was cleared.');
       }
 
       case 'leave': {
         const queue = queues.get(interaction.guildId);
-        if (!queue || !queue.connection) return respond(interaction, 'ربات داخل Voice نیست.');
-        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'برای بیرون بردن ربات باید در همان Voice Channel باشی.');
+        if (!queue || !queue.connection) return respond(interaction, 'The bot is not in a voice channel.');
+        if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the bot’s voice channel to disconnect it.');
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
         queue.connection.destroy();
         queue.connection = null;
         queue.voiceChannelId = null;
-        return respond(interaction, 'از Voice خارج شدم.');
+        return respond(interaction, 'Left the voice channel.');
       }
 
       case 'kick': {
@@ -722,7 +778,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const reason = interaction.options.getString('reason') || 'No reason provided';
         const member = await interaction.guild.members.fetch(user.id);
         await member.kick(reason);
-        return respond(interaction, 'عضو ' + user.tag + ' اخراج شد.');
+        return respond(interaction, 'Kicked ' + user.tag + '.');
       }
 
       case 'ban': {
@@ -730,7 +786,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const user = interaction.options.getUser('user', true);
         const reason = interaction.options.getString('reason') || 'No reason provided';
         await interaction.guild.members.ban(user.id, { reason });
-        return respond(interaction, 'کاربر ' + user.tag + ' بن شد.');
+        return respond(interaction, 'Banned ' + user.tag + '.');
       }
 
       case 'timeout': {
@@ -740,7 +796,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const reason = interaction.options.getString('reason') || 'No reason provided';
         const member = await interaction.guild.members.fetch(user.id);
         await member.timeout(minutes * 60 * 1000, reason);
-        return respond(interaction, 'محدودیت ' + user.tag + ' برای ' + minutes + ' دقیقه ثبت شد.');
+        return respond(interaction, 'Timed out ' + user.tag + ' for ' + minutes + ' minutes.');
       }
 
       case 'untimeout': {
@@ -749,37 +805,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const reason = interaction.options.getString('reason') || 'Timeout removed by moderator';
         const member = await interaction.guild.members.fetch(user.id);
         await member.timeout(null, reason);
-        return respond(interaction, 'محدودیت ' + user.tag + ' برداشته شد.');
+        return respond(interaction, 'Removed the timeout for ' + user.tag + '.');
       }
 
       case 'clear': {
         const amount = interaction.options.getInteger('amount', true);
         if (!interaction.channel || !interaction.channel.isTextBased() || !interaction.channel.bulkDelete) {
-          return respond(interaction, 'این دستور در این کانال قابل استفاده نیست.');
+          return respond(interaction, 'This command cannot be used in this channel.');
         }
         const deleted = await interaction.channel.bulkDelete(amount, true);
-        return respond(interaction, deleted.size + ' پیام پاک شد. (پیام‌های قدیمی‌تر از ۱۴ روز حذف گروهی نمی‌شوند.)');
+        return respond(interaction, deleted.size + ' messages deleted. (Messages older than 14 days cannot be bulk-deleted.)');
       }
 
       case 'slowmode': {
         const seconds = interaction.options.getInteger('seconds', true);
         if (!interaction.channel || typeof interaction.channel.setRateLimitPerUser !== 'function') {
-          return respond(interaction, 'این دستور در این کانال قابل استفاده نیست.');
+          return respond(interaction, 'This command cannot be used in this channel.');
         }
         await interaction.channel.setRateLimitPerUser(seconds, 'Changed by ' + interaction.user.tag);
-        return respond(interaction, seconds === 0 ? 'کندکننده پیام خاموش شد.' : 'کندکننده روی ' + seconds + ' ثانیه تنظیم شد.');
+        return respond(interaction, seconds === 0 ? 'Slowmode disabled.' : 'Slowmode set to ' + seconds + ' seconds.');
       }
 
       case 'lock': {
-        if (!interaction.channel || !interaction.channel.permissionOverwrites) return respond(interaction, 'این دستور در این کانال قابل استفاده نیست.');
+        if (!interaction.channel || !interaction.channel.permissionOverwrites) return respond(interaction, 'This command cannot be used in this channel.');
         await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false }, { reason: 'Locked by ' + interaction.user.tag });
-        return respond(interaction, 'کانال قفل شد.');
+        return respond(interaction, 'Channel locked.');
       }
 
       case 'unlock': {
-        if (!interaction.channel || !interaction.channel.permissionOverwrites) return respond(interaction, 'این دستور در این کانال قابل استفاده نیست.');
+        if (!interaction.channel || !interaction.channel.permissionOverwrites) return respond(interaction, 'This command cannot be used in this channel.');
         await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null }, { reason: 'Unlocked by ' + interaction.user.tag });
-        return respond(interaction, 'قفل کانال برداشته شد.');
+        return respond(interaction, 'Channel unlocked.');
       }
 
       case 'warn': {
@@ -789,31 +845,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!Array.isArray(warnings[key])) warnings[key] = [];
         warnings[key].push({ reason, moderator: interaction.user.tag, at: new Date().toISOString() });
         saveWarnings();
-        return respond(interaction, 'برای ' + user.tag + ' اخطار ثبت شد. تعداد اخطارها: ' + warnings[key].length);
+        return respond(interaction, 'Added a warning for ' + user.tag + '. Total warnings: ' + warnings[key].length);
       }
 
       case 'warnings': {
         const user = interaction.options.getUser('user', true);
         const list = warnings[interaction.guildId + ':' + user.id] || [];
-        if (!list.length) return respond(interaction, 'برای ' + user.tag + ' اخطاری ثبت نشده است.');
+        if (!list.length) return respond(interaction, 'No warnings found for ' + user.tag + '.');
         const lines = list.slice(-10).map((item, index) => (index + 1) + '. ' + item.reason + ' — ' + item.moderator + ' — ' + item.at.slice(0, 10));
-        return respond(interaction, ('اخطارهای ' + user.tag + ':\n' + lines.join('\n')).slice(0, 1900));
+        return respond(interaction, ('Warnings for ' + user.tag + ':\n' + lines.join('\n')).slice(0, 1900));
       }
 
       case 'clearwarns': {
         const user = interaction.options.getUser('user', true);
         delete warnings[interaction.guildId + ':' + user.id];
         saveWarnings();
-        return respond(interaction, 'اخطارهای ' + user.tag + ' پاک شد.');
+        return respond(interaction, 'Cleared warnings for ' + user.tag + '.');
       }
 
       default:
-        return respond(interaction, 'این دستور شناخته نشد.');
+        return respond(interaction, 'Unknown command.');
     }
   } catch (error) {
     console.error('Command /' + interaction.commandName + ' failed:', error.stack || error);
-    let message = 'دستور با خطا مواجه شد؛ مجوزهای ربات و تنظیمات را بررسی کن.';
-    if (error && error.message && /YouTube|SoundCloud|آهنگ|Voice|لینک|پشتیبانی نمی‌شود/.test(error.message)) message = error.message;
+    let message = 'The command failed. Check the bot permissions and configuration.';
+    if (error && error.message && /YouTube|SoundCloud|voice|URL|Unsupported link/i.test(error.message)) message = error.message;
     try { await respond(interaction, message); }
     catch (replyError) { console.error('Could not respond:', replyError.message || replyError); }
   }
