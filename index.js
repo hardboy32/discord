@@ -39,6 +39,22 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 const queues = new Map();
+let soundCloudInitPromise = null;
+
+async function ensureSoundCloudReady() {
+  if (!soundCloudInitPromise) {
+    soundCloudInitPromise = (async () => {
+      const clientId = await play.getFreeClientID();
+      if (!clientId) throw new Error('SoundCloud did not return a client ID.');
+      play.setToken({ soundcloud: { client_id: clientId } });
+      console.log('SoundCloud client configured.');
+    })().catch((error) => {
+      soundCloudInitPromise = null;
+      throw error;
+    });
+  }
+  await soundCloudInitPromise;
+}
 
 function loadWarnings() {
   try {
@@ -101,6 +117,7 @@ function durationText(input) {
 }
 
 async function findSoundCloudTrack(query, requestedBy) {
+  await ensureSoundCloudReady();
   const results = await play.search(query, {
     limit: 1,
     source: { soundcloud: 'tracks' },
@@ -134,6 +151,10 @@ async function findTrack(query, requestedBy) {
         searchQuery: video.title || input,
         source: 'youtube',
       };
+    }
+
+    if (/soundcloud\.com|snd\.sc/i.test(input)) {
+      await ensureSoundCloudReady();
     }
 
     if (play.so_validate(input) === 'track') {
