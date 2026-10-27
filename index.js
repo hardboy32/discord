@@ -23,7 +23,7 @@ const {
   entersState,
   joinVoiceChannel,
 } = require('@discordjs/voice');
-const play = require('play-dl');
+const play = require('@iamtraction/play-dl');
 
 const TOKEN = (process.env.DISCORD_TOKEN || '').trim();
 const CLIENT_ID = (process.env.DISCORD_CLIENT_ID || '').trim();
