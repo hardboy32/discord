@@ -29,7 +29,7 @@ Branch: `main`
 
 **Build Command**
 ```bash
-npm install --omit=dev --no-audit --no-fund
+npm install --omit=dev --no-audit --no-fund && apt-get update && apt-get install -y ffmpeg
 ```
 
 **Start Command**
@@ -51,6 +51,6 @@ Do not put the real token in GitHub or in `.env.example`. Add it only to Infrlo'
 In Discord Developer Portal, create an application and add its Bot. Use OAuth2 URL Generator with scopes `bot` and `applications.commands`. Grant only the permissions needed: View Channels, Send Messages, Use Application Commands, Connect, Speak, Kick Members, Ban Members, Moderate Members, Manage Messages, and Manage Channels. The bot's role hierarchy must permit the requested moderation action.
 
 ## Notes
-- Music source extraction depends on upstream YouTube/SoundCloud changes and network access from the host. The code does not bundle a large static FFmpeg binary, to keep deployment lighter.
+- Music source extraction depends on upstream YouTube/SoundCloud changes and network access from the host. The Build Command installs the system FFmpeg and the bot prefers `/usr/bin/ffmpeg`; it falls back to the npm `ffmpeg-static` package only if a system binary is unavailable. Runtime logs print the selected FFmpeg path and version.
 - Warning records are saved to `data/warnings.json`. They may be lost when Infrlo replaces an ephemeral container unless persistent storage is enabled.
 - The Node.js binary is installed locally from npm to bypass an Infrlo buildpack that currently uses Node.js 20 for this app. This adds some download size to the build.
