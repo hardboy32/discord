@@ -767,6 +767,51 @@ async function requestAIReply(message, prompt) {
   return answer.trim();
 }
 
+function extractMusicQuery(prompt) {
+  const normalized = String(prompt || '')
+    .normalize('NFKC')
+    .replace(/[ي]/g, 'ی')
+    .replace(/[ك]/g, 'ک')
+    .replace(/\u0640/g, '')
+    .replace(/\u200c/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return null;
+
+  const hasMusicWord = /(?:آهنگ|اهنگ|موزیک|موسیقی|ترانه|song|music|track)/iu.test(normalized);
+  const hasPlayVerb = /(?:پخش\s*(?:کن|بکن|کنید|کنه|بده)|بذار(?:\s+پخش)?|بزن(?:ش)?|اجرا\s*کن|play\s+(?:the\s+)?(?:song|music|track)?)/iu.test(normalized);
+  if (!hasMusicWord || !hasPlayVerb) return null;
+
+  let query = normalized
+    .replace(/^(?:(?:لطفا|لطفاً)\s+)?(?:(?:میشه|می\s*شه|میتونی|می\s*تونی)\s+)?/u, '')
+    .replace(/^(?:(?:یه|یک|اون|این|لطفا|لطفاً)\s+)*(?:آهنگ|اهنگ|موزیک|موسیقی|ترانه|song|music|track)\s*/iu, '')
+    .replace(/^(?:پخش\s*کن|بذار|بزن)\s+/u, '')
+    .replace(/\s*(?:(?:رو|را)\s+)?(?:(?:برام|برای\s+من)\s+)?(?:لطفا\s+)?(?:پخش\s*(?:کن|بکن|کنید|کنه|بده)|بذار(?:\s*پخش)?|بزن(?:ش)?|اجرا\s*کن|play(?:\s+it)?|play\s+(?:the\s+)?(?:song|music|track)?)\s*$/iu, '')
+    .replace(/\s+(?:رو|را)$/u, '')
+    .replace(/^[،,:;.!؟?\s]+|[،,:;.!؟?\s]+$/gu, '')
+    .trim();
+
+  return query.length >= 1 ? query.slice(0, 300) : null;
+}
+
+async function enqueueTrackFromMessage(message, query) {
+  const member = await message.guild.members.fetch(message.author.id);
+  if (!member.voice.channel) {
+    return { error: 'Join a voice channel first, then ask me to play a song.' };
+  }
+
+  const track = await findTrack(query, message.author.tag || message.author.username);
+  const queue = getQueue(message.guildId);
+  await connectVoice(message.guild, member.voice.channel, queue);
+  queue.textChannelId = message.channelId;
+  const position = queue.tracks.length + (queue.current ? 1 : 0);
+  queue.tracks.push(track);
+  if (!queue.current) void playNext(message.guildId);
+
+  return { track, position: position + 1 };
+}
+
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || !client.user) return;
 
@@ -811,6 +856,31 @@ client.on(Events.MessageCreate, async (message) => {
 
   try {
     await message.channel.sendTyping().catch(() => {});
+
+    const musicQuery = extractMusicQuery(prompt);
+    if (musicQuery) {
+      try {
+        const result = await enqueueTrackFromMessage(message, musicQuery);
+        if (result.error) {
+          await message.reply({ content: result.error, allowedMentions: { repliedUser: false } });
+          return;
+        }
+
+        await message.reply({
+          content: '🎵 Okay, queued **' + result.track.title.slice(0, 160) +
+            '**. Queue position: ' + result.position + '.',
+          allowedMentions: { repliedUser: false },
+        });
+      } catch (musicError) {
+        console.error('Natural-language music request failed:', musicError.stack || musicError);
+        await message.reply({
+          content: 'I couldn’t find or play that song. Try a more specific title, or use /play with the song name.',
+          allowedMentions: { repliedUser: false },
+        }).catch(() => {});
+      }
+      return;
+    }
+
     const answer = await requestAIReply(message, prompt);
     await message.reply({
       content: answer.length > 1900 ? answer.slice(0, 1890) + '…' : answer,
