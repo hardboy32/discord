@@ -63,6 +63,7 @@ const {
   joinVoiceChannel,
 } = require('@discordjs/voice');
 const play = require('@iamtraction/play-dl');
+const { startDashboard, getDashboardSettings } = require('./dashboard');
 const YOUTUBE_COOKIES_B64 = (process.env.YOUTUBE_COOKIES_B64 || '').trim();
 const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
 const YTDLP_COOKIES_PATH = path.join('/tmp', 'youtube-cookies.txt');
@@ -164,6 +165,7 @@ const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODEL = (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
+const DASHBOARD_GUILD_ID = (process.env.DASHBOARD_GUILD_ID || '686002315148394502').trim();
 
 if (!TOKEN) {
   console.error('Missing DISCORD_TOKEN. Add the bot token in Railway Variables.');
@@ -1086,6 +1088,14 @@ async function enqueueTrackFromMessage(message, query) {
 
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || !client.user) return;
+  const guildSettings = getDashboardSettings(message.guildId);
+  if (guildSettings.moderation.enabled && guildSettings.moderation.antiLink && /discord\\.gg\\/|discord(?:app)?\\.com\\/invite\\//i.test(message.content)) {
+    if (message.member && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
+    await message.delete().catch(() => {});
+    const logChannel = guildSettings.moderation.logChannelId && message.guild.channels.cache.get(guildSettings.moderation.logChannelId);
+    if (logChannel && logChannel.isTextBased()) await logChannel.send('Removed an invite link posted by <@' + message.author.id + '>.').catch(() => {});
+    return;
+  }
 
   const isMentioned = message.mentions.users.has(client.user.id);
   const namePrefixPattern = /^\s*(?:\(\s*(?:محمد|ربات)\s*\)|(?:محمد|ربات))(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/u;
@@ -1131,6 +1141,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     const musicQuery = extractMusicQuery(prompt);
     if (musicQuery) {
+      if (!guildSettings.music.enabled) return message.reply({ content: 'Music is currently disabled by the server administrator.', allowedMentions: { repliedUser: false } });
       try {
         const result = await enqueueTrackFromMessage(message, musicQuery);
         if (result.error) {
@@ -1153,6 +1164,7 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
+    if (!guildSettings.ai.enabled) return;
     const answer = await requestAIReply(message, prompt);
     await message.reply({
       content: answer.length > 1900 ? answer.slice(0, 1890) + '…' : answer,
@@ -1170,10 +1182,23 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
+client.on(Events.GuildMemberAdd, async (member) => {
+  const config = getDashboardSettings(member.guild.id).welcome;
+  if (!config.enabled || !config.channelId) return;
+  const channel = member.guild.channels.cache.get(config.channelId);
+  if (!channel || !channel.isTextBased()) return;
+  const content = String(config.message || 'Welcome {user} to {server}!')
+    .replace(/\\{user\\}/g, '<@' + member.id + '>')
+    .replace(/\\{server\\}/g, member.guild.name)
+    .replace(/\\{count\\}/g, String(member.guild.memberCount));
+  await channel.send({ content, allowedMentions: { users: [member.id] } }).catch(error => console.error('Welcome message failed:', error.message || error));
+});
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
+  startDashboard(readyClient);
   console.log(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
   console.log('Bot activity is cleared. Use /activity to set it.');
@@ -1199,6 +1224,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
+    const guildSettings = interaction.guildId ? getDashboardSettings(interaction.guildId) : null;
+    const musicCommands = ['play', 'join', 'queue', 'skip', 'pause', 'resume', 'stop', 'leave'];
+    const moderationCommands = ['kick', 'ban', 'timeout', 'untimeout', 'clear', 'slowmode', 'lock', 'unlock', 'warn', 'warnings', 'clearwarns'];
+    if (guildSettings && musicCommands.includes(interaction.commandName) && !guildSettings.music.enabled) return respond(interaction, 'Music is currently disabled by the server administrator.');
+    if (guildSettings && moderationCommands.includes(interaction.commandName) && !guildSettings.moderation.enabled) return respond(interaction, 'Moderation commands are currently disabled by the server administrator.');
     const permission = moderatorPermissions[interaction.commandName];
     if (permission && (!interaction.memberPermissions || !interaction.memberPermissions.has(permission))) {
       return respond(interaction, 'You do not have permission to use this command.');
