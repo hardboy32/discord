@@ -550,49 +550,49 @@ function getTrackThumbnail(...candidates) {
 }
 
 function loopModeLabel(mode) {
-  if (mode === 'track') return '🔂 تکرار همین آهنگ';
-  if (mode === 'queue') return '🔁 تکرار کل صف';
-  return '↪️ تکرار خاموش';
+  if (mode === 'track') return '🔂 Repeat Current Track';
+  if (mode === 'queue') return '🔁 Repeat Queue';
+  return '↪️ Loop Off';
 }
 
 function buildMusicPanel(queue, track) {
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
-    .setTitle('🎵 در حال پخش')
+    .setTitle('🎵 Now Playing')
     .setDescription('[' + track.title.slice(0, 240) + '](' + track.url + ')')
     .addFields(
-      { name: 'مدت', value: String(track.duration || 'نامشخص'), inline: true },
-      { name: 'درخواست‌کننده', value: String(track.requestedBy || 'نامشخص').slice(0, 80), inline: true },
-      { name: 'حالت تکرار', value: loopModeLabel(queue.loopMode), inline: true }
+      { name: 'Duration', value: String(track.duration || 'نامشخص'), inline: true },
+      { name: 'Requested by', value: String(track.requestedBy || 'نامشخص').slice(0, 80), inline: true },
+      { name: 'Loop Mode', value: loopModeLabel(queue.loopMode), inline: true }
     )
-    .setFooter({ text: 'کنترل موزیک از طریق دکمه‌های زیر' });
+    .setFooter({ text: 'Use the buttons below to control playback' });
   if (track.thumbnail) embed.setImage(track.thumbnail);
 
   const paused = queue.player.state.status === AudioPlayerStatus.Paused;
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('music:pause')
-      .setLabel(paused ? 'ادامه' : 'توقف موقت')
+      .setLabel(paused ? 'Resume' : 'Pause')
       .setEmoji(paused ? '▶️' : '⏸️')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('music:skip')
-      .setLabel('بعدی')
+      .setLabel('Skip')
       .setEmoji('⏭️')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('music:stop')
-      .setLabel('توقف')
+      .setLabel('Stop')
       .setEmoji('⏹️')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId('music:loop')
-      .setLabel(queue.loopMode === 'off' ? 'تکرار' : queue.loopMode === 'track' ? 'تکرار آهنگ' : 'تکرار صف')
+      .setLabel(queue.loopMode === 'off' ? 'تکرار' : queue.loopMode === 'track' ? 'Repeat Track' : 'Repeat Queue')
       .setEmoji(queue.loopMode === 'queue' ? '🔁' : '🔂')
       .setStyle(queue.loopMode === 'off' ? ButtonStyle.Secondary : ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('music:queue')
-      .setLabel('صف پخش')
+      .setLabel('Queue')
       .setEmoji('📜')
       .setStyle(ButtonStyle.Secondary)
   );
@@ -622,19 +622,19 @@ async function markPlaybackFinished(queue) {
   if (!queue.nowPlayingMessage) return;
   const embed = new EmbedBuilder()
     .setColor(0x747F8D)
-    .setTitle('⏹️ پخش به پایان رسید')
-    .setDescription('صف پخش خالی است. برای پخش آهنگ جدید از /play استفاده کن.');
+    .setTitle('⏹️ Playback Finished')
+    .setDescription('Queue خالی است. برای پخش آهنگ جدید از /play استفاده کن.');
   await queue.nowPlayingMessage.edit({ embeds: [embed], components: [] }).catch(() => {});
 }
 
 async function handleMusicButton(interaction) {
   const queue = queues.get(interaction.guildId);
   if (!queue || !queue.current) {
-    return interaction.reply({ content: 'الان آهنگی در حال پخش نیست.', flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: 'No track is currently playing.', flags: MessageFlags.Ephemeral });
   }
   if (!(await userSharesVoice(interaction, queue))) {
     return interaction.reply({
-      content: 'برای کنترل موزیک باید داخل همان کانال صوتی ربات باشی.',
+      content: 'You must be in the same voice channel as the bot to use these controls.',
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -648,28 +648,28 @@ async function handleMusicButton(interaction) {
     case 'music:skip':
       queue.skipCurrent = true;
       queue.player.stop(true);
-      return interaction.reply({ content: 'آهنگ بعدی پخش می‌شود.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'آهنگ Skip پخش می‌شود.', flags: MessageFlags.Ephemeral });
     case 'music:stop':
       queue.stopping = true;
       queue.tracks = [];
       queue.current = null;
       queue.player.stop(true);
-      return interaction.reply({ content: 'پخش متوقف و صف خالی شد.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'پخش مStop و صف خالی شد.', flags: MessageFlags.Ephemeral });
     case 'music:loop':
       queue.loopMode = queue.loopMode === 'off' ? 'track' : queue.loopMode === 'track' ? 'queue' : 'off';
       await updateMusicPanel(queue, queue.current);
       return interaction.deferUpdate();
     case 'music:queue': {
       const lines = [];
-      if (queue.current) lines.push('🎵 اکنون: ' + queue.current.title);
+      if (queue.current) lines.push('🎵 Now: ' + queue.current.title);
       queue.tracks.slice(0, 15).forEach((item, index) => lines.push((index + 1) + '. ' + item.title));
       return interaction.reply({
-        content: lines.length ? lines.join('\n').slice(0, 1900) : 'صف پخش خالی است.',
+        content: lines.length ? lines.join('\n').slice(0, 1900) : 'Queue خالی است.',
         flags: MessageFlags.Ephemeral,
       });
     }
     default:
-      return interaction.reply({ content: 'این دکمه شناخته نشد.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'This button is not recognized.', flags: MessageFlags.Ephemeral });
   }
 }
 
