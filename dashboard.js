@@ -55,7 +55,10 @@ function getSession(req) {
   const token = cookieValue(req, 'hb_session');
   if (!token) return null;
   const parts = token.split('.');
-  if (parts.length !== 2 || !crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(sign(parts[0])))) return null;
+  if (parts.length !== 2) return null;
+  const supplied = Buffer.from(parts[1]);
+  const expected = Buffer.from(sign(parts[0]));
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
   const session = sessions.get(parts[0]);
   if (!session || session.expires < Date.now()) {
     sessions.delete(parts[0]);
