@@ -188,6 +188,7 @@ function startDashboard(client) {
           const validChannel = id => !id || channelIds.has(id);
           if (!validChannel(body.welcome && body.welcome.channelId) || !validChannel(body.moderation && body.moderation.logChannelId)) return send(res, 400, { error: 'Invalid channel' });
           settings = merge(settings, body);
+          if (settings.welcome.type === 'image' && !settings.welcome.imagePath) return send(res, 400, { error: 'Upload a welcome image before selecting image mode.' });
           settings.welcome.message = String(settings.welcome.message || defaults.welcome.message).slice(0, 500);
           saveSettings();
           return send(res, 200, { ok: true });
