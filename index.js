@@ -64,7 +64,7 @@ const {
 } = require('@discordjs/voice');
 const play = require('@iamtraction/play-dl');
 const { startDashboard, getDashboardSettings } = require('./dashboard');
-const { attachCoreModules } = require('./modules');
+const { attachCoreModules, getCoreCommands, handleCoreInteraction } = require('./modules');
 const YOUTUBE_COOKIES_B64 = (process.env.YOUTUBE_COOKIES_B64 || '').trim();
 const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
 const YTDLP_COOKIES_PATH = path.join('/tmp', 'youtube-cookies.txt');
@@ -905,6 +905,7 @@ const moderatorPermissions = {
 };
 
 const commands = [
+  ...getCoreCommands(),
   new SlashCommandBuilder().setName('play').setDescription('Play a track by title or URL')
     .addStringOption(o => o.setName('query').setDescription('Track title or YouTube / SoundCloud URL').setRequired(true).setMaxLength(300)),
   new SlashCommandBuilder().setName('join').setDescription('Join your current voice channel'),
@@ -1214,6 +1215,15 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (await handleCoreInteraction(interaction)) return;
+  } catch (error) {
+    console.error('Core module interaction failed:', error.stack || error);
+    const payload = { content: 'That action could not be completed. Check the bot permissions and try again.', flags: MessageFlags.Ephemeral };
+    if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
+    else await interaction.reply(payload).catch(() => {});
+    return;
+  }
   if (interaction.isButton() && interaction.customId.startsWith('music:')) {
     try {
       await handleMusicButton(interaction);
