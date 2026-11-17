@@ -88,7 +88,7 @@ function allowed(user) {
   return user.owner === true || (permissions & 0x8n) === 0x8n || (permissions & 0x20n) === 0x20n;
 }
 function html() {
-  return \`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HardBoy • Server Dashboard</title><style>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HardBoy • Server Dashboard</title><style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#141d31;--line:#293752;--muted:#98a8c4;--text:#edf2ff;--accent:#7887ff;--green:#5bd6a0}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0,#1b2850 0,transparent 42%),var(--bg);color:var(--text);font:15px Inter,system-ui,Segoe UI,sans-serif}
 button,input,select,textarea{font:inherit}button{cursor:pointer;border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px;font-weight:700}button.secondary{background:#273653}button.danger{background:#a83e57}.hidden{display:none!important}
@@ -129,7 +129,7 @@ $('saveModeration').onclick=async()=>{try{await api('/api/settings',{method:'PUT
 $('saveModules').onclick=async()=>{try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({music:{enabled:$('musicEnabled').checked},ai:{enabled:$('aiEnabled').checked}})});$('moduleStatus').textContent='Saved.'}catch(e){$('moduleStatus').textContent=e.message}};
 $('runAction').onclick=async()=>{const status=$('actionStatus');status.textContent='Working…';try{const result=await api('/api/admin-command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:$('adminAction').value,userId:$('targetUser').value,amount:Number($('actionAmount').value)||0,channelId:$('actionChannel').value,reason:$('actionReason').value})});status.textContent=result.message||'Command completed.'}catch(e){status.textContent=e.message}};
 load();
-</script></body></html>\`;
+</script></body></html>`;
 }
 function startDashboard(client) {
   if (!CLIENT_ID || !CLIENT_SECRET || !SESSION_SECRET || !REDIRECT_URI) {
