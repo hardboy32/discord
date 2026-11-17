@@ -9,7 +9,11 @@ This repository is configured to run as a **persistent Discord bot service on Ra
 - `/join`, `/queue`, `/skip`, `/pause`, `/resume`, `/stop`, `/leave`
 - Natural-language music requests, for example: `محمد آهنگ ... رو پخش کن`
 
-### Moderation
+### Interactive now-playing panel
+
+When a track starts, the bot posts or updates one music player message in the text channel where playback was requested. It includes the track artwork when the source provides one, title, duration, requester, and buttons for pause/resume, skip, stop, loop mode, and queue display. Loop mode cycles through off, repeat current track, and repeat queue. Music controls are limited to members who are in the bot's voice channel.
+
+## Moderation
 - `/kick`, `/ban`, `/timeout`, `/untimeout`
 - `/clear amount`, `/slowmode seconds`, `/lock`, `/unlock`
 - `/warn`, `/warnings`, `/clearwarns`
