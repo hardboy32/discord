@@ -2,7 +2,7 @@
   "name": "discord-music-moderator",
   "version": "1.0.0",
   "private": true,
-  "description": "Railway-ready Discord music, moderation, and Groq AI bot",
+  "description": "Railway-ready Discord music, moderation, and Groq AI bot with yt-dlp YouTube playback",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
