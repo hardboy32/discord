@@ -3,6 +3,8 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { promisify } = require('node:util');
+const execFileAsync = promisify(require('node:child_process').execFile);
 let bundledFfmpegPath = null;
 try {
   bundledFfmpegPath = require('ffmpeg-static');
@@ -71,6 +73,61 @@ const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aa
 let ytDlpInitPromise = null;
 let ytDlpCookiesText = null;
 let ytDlpCookieCount = 0;
+const BGUTIL_VERSION = '2.0.2';
+const BGUTIL_ROOT = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'bgutil-ytdlp-pot-provider-' + BGUTIL_VERSION);
+const BGUTIL_ARCHIVE = path.join('/tmp', 'bgutil-ytdlp-pot-provider-' + BGUTIL_VERSION + '.tar.gz');
+let bgutilInitPromise = null;
+let bgutilAvailable = false;
+
+async function runSetupCommand(command, args, options = {}) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stdout.on('data', chunk => process.stdout.write(chunk));
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-5000); });
+    child.on('error', reject);
+    child.on('close', code => code === 0 ? resolve() : reject(new Error(command + ' exited with code ' + code + ': ' + stderr)));
+  });
+}
+
+async function ensureBgutilReady() {
+  if (!bgutilInitPromise) {
+    bgutilInitPromise = (async () => {
+      const serverEntry = path.join(BGUTIL_ROOT, 'server', 'build', 'main.js');
+      const pluginRoot = path.join(BGUTIL_ROOT, 'plugin');
+      if (!fs.existsSync(serverEntry) || !fs.existsSync(path.join(pluginRoot, 'yt_dlp_plugins'))) {
+        console.log('Installing BgUtils YouTube PO Token provider ' + BGUTIL_VERSION + '...');
+        await fs.promises.mkdir(path.dirname(BGUTIL_ROOT), { recursive: true });
+        const response = await fetch('https://codeload.github.com/Brainicism/bgutil-ytdlp-pot-provider/tar.gz/refs/tags/' + BGUTIL_VERSION, {
+          signal: AbortSignal.timeout(120000), redirect: 'follow',
+        });
+        if (!response.ok) throw new Error('Could not download BgUtils provider (HTTP ' + response.status + ').');
+        await fs.promises.writeFile(BGUTIL_ARCHIVE, Buffer.from(await response.arrayBuffer()));
+        await runSetupCommand('tar', ['-xzf', BGUTIL_ARCHIVE, '-C', path.dirname(BGUTIL_ROOT)]);
+        const extractedRoot = path.join(path.dirname(BGUTIL_ROOT), 'bgutil-ytdlp-pot-provider-' + BGUTIL_VERSION);
+        if (extractedRoot !== BGUTIL_ROOT && fs.existsSync(extractedRoot)) {
+          await fs.promises.rm(BGUTIL_ROOT, { recursive: true, force: true });
+          await fs.promises.rename(extractedRoot, BGUTIL_ROOT);
+        }
+        await runSetupCommand('npm', ['ci', '--include=dev'], { cwd: path.join(BGUTIL_ROOT, 'server') });
+        await runSetupCommand('npx', ['tsc'], { cwd: path.join(BGUTIL_ROOT, 'server') });
+        await fs.promises.unlink(BGUTIL_ARCHIVE).catch(() => {});
+      }
+      if (!fs.existsSync(serverEntry)) throw new Error('BgUtils provider build output was not created.');
+      bgutilAvailable = true;
+      console.log('BgUtils PO Token provider is ready (script mode).');
+    })().catch(error => {
+      bgutilAvailable = false;
+      console.error('BgUtils setup failed; continuing with standard yt-dlp:', error.message || error);
+    });
+  }
+  await bgutilInitPromise;
+  return bgutilAvailable;
+}
+
+function addYoutubeExtractorOptions(args, withCookies = true) {
+  if (withCookies && ytDlpCookiesText) args.push('--cookies', ytDlpCookiePathForCurrentProcess);
+}
 
 async function ensureYtDlpReady() {
   if (!ytDlpInitPromise) {
@@ -128,9 +185,10 @@ async function removeYtDlpCookieCopy(cookiePath) {
 
 async function getYoutubeInfo(queryOrUrl) {
   await ensureYtDlpReady();
+  const useBgutil = await ensureBgutilReady();
   const args = ['--dump-single-json', '--no-warnings', '--no-playlist', '--skip-download'];
   const cookiePath = await createYtDlpCookieCopy();
-  if (cookiePath) args.push('--cookies', cookiePath);
+  addYoutubeExtractorOptions(args, cookiePath, useBgutil);
   args.push(queryOrUrl);
   return new Promise((resolve, reject) => {
     const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -165,9 +223,10 @@ async function getYoutubeInfo(queryOrUrl) {
 
 async function createYoutubeStream(url) {
   await ensureYtDlpReady();
+  const useBgutil = await ensureBgutilReady();
   const args = ['--no-warnings', '--no-progress', '--format', 'bestaudio/best', '--output', '-', '--no-playlist'];
   const cookiePath = await createYtDlpCookieCopy();
-  if (cookiePath) args.push('--cookies', cookiePath);
+  addYoutubeExtractorOptions(args, cookiePath, useBgutil);
   args.push(url);
   const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
