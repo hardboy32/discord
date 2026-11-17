@@ -38,7 +38,8 @@ async function handleCoreInteraction(interaction) {
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
       .setTitle('Support Center')
-      .setDescription('Need help? Press the button below to open a private support ticket.');
+      .setDescription('Need help? Press the button below to open a private support ticket.')
+      .setFooter({ text: 'ticket-config|' + staffRole.id + '|' + transcriptChannel.id + '|' + (category ? category.id : '') });
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')
     );
@@ -66,11 +67,13 @@ async function handleCoreInteraction(interaction) {
       return true;
     }
 
-    const panelMessage = interaction.message;
-    const setupLine = panelMessage.embeds[0]?.footer?.text || '';
-    const setup = interaction.client.ticketSetup?.get(interaction.guildId);
-    if (!setup) {
-      await interaction.editReply({ content: 'Ticket setup is not available after restart yet. Please run /ticket-setup again after the bot update.' });
+    const setupLine = interaction.message.embeds[0]?.footer?.text || '';
+    const setupParts = setupLine.split('|');
+    const setup = setupParts[0] === 'ticket-config' && setupParts.length >= 4
+      ? { staffRoleId: setupParts[1], transcriptChannelId: setupParts[2], categoryId: setupParts[3] || null }
+      : null;
+    if (!setup || !/^\\d{17,20}$/.test(setup.staffRoleId) || !/^\\d{17,20}$/.test(setup.transcriptChannelId)) {
+      await interaction.editReply({ content: 'This ticket panel is missing its setup information. Please create a new panel with /ticket-setup.' });
       return true;
     }
     const botMember = interaction.guild.members.me;
@@ -151,7 +154,6 @@ async function handleCoreInteraction(interaction) {
 }
 
 function attachCoreModules(client, getSettings) {
-  client.ticketSetup = new Map();
   const messageWindows = new Map();
   async function sendLog(guild, title, description, color = 0x7887ff) {
     const config = getSettings(guild.id);
