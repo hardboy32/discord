@@ -1199,14 +1199,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.current) return respond(interaction, 'No track is currently playing.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
-        return respond(interaction, queue.player.pause(true) ? 'Playback paused.' : 'Playback cannot be paused.');
+        const paused = queue.player.pause(true);
+        if (paused) await updateMusicPanel(queue, queue.current);
+        return respond(interaction, paused ? 'Playback paused.' : 'Playback cannot be paused.');
       }
 
       case 'resume': {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.current) return respond(interaction, 'There is no track to resume.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
-        return respond(interaction, queue.player.unpause() ? 'Playback resumed.' : 'Playback is not paused.');
+        const resumed = queue.player.unpause();
+        if (resumed) await updateMusicPanel(queue, queue.current);
+        return respond(interaction, resumed ? 'Playback resumed.' : 'Playback is not paused.');
       }
 
       case 'stop': {
