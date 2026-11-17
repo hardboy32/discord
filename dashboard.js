@@ -142,7 +142,7 @@ main{padding:32px;max-width:1300px;width:100%;margin:auto}.top{display:flex;just
 <p class="hint">Disabling a feature pauses its commands and interactions; saved data is retained. The bot needs the relevant Discord permissions and the Railway Volume must remain mounted at /app/data.</p></div>
 <div class="panel"><h2>Advanced module configuration</h2><p class="muted">Configure the behavior of every community module here. These settings are saved on the Railway Volume and are read by the bot.</p><div id="communityConfigGrid" class="grid"></div><div class="actions"><button id="saveCommunityConfig">Save all advanced settings</button><span id="communityConfigStatus"></span></div><p class="hint">Some actions that publish Discord messages (for example creating a ticket or verification panel) remain explicit actions; these settings control their defaults and runtime behavior.</p></div>
 </section>
-<section id="page-backup" class="page hidden"><div class="panel"><h2>Complete bot data backup</h2><p class="muted">Download a single JSON archive containing the bot's persistent text data and configuration files from the Railway Volume.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>/app/data</b></div><div class="stat"><span class="muted">Security</span><b>Admin only</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files found in the data folder. Binary files such as welcome images and secrets/tokens are not included. Keep the downloaded backup somewhere safe.</p><div class="actions"><button id="downloadDataBackup">Download complete data backup</button><span id="backupStatus"></span></div></div></section>
+<section id="page-backup" class="page hidden"><div class="panel"><h2>Complete bot data backup</h2><p class="muted">Download a single JSON archive containing the bot's persistent text data and configuration files from the Railway Volume.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>/app/data</b></div><div class="stat"><span class="muted">Security</span><b>Admin only</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files found in the data folder. Binary files such as welcome images and secrets/tokens are not included. Keep the downloaded backup somewhere safe.</p><div class="actions"><button id="downloadDataBackup">Download complete data backup</button><span id="backupStatus"></span></div><hr style="border-color:var(--line);margin:22px 0"><h2>Restore from backup</h2><p class="muted">Upload a backup JSON previously downloaded from this dashboard. Matching files will be replaced by the backup contents.</p><label class="field">Backup file (.json)<input id="restoreBackupFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="restoreDataBackup" class="danger">Restore selected backup</button><span id="restoreStatus"></span></div><p class="hint">Restore only accepts this bot’s backup format and the same Discord server. It replaces matching text files; it does not restore images, secrets, Discord messages, roles, or channels. Do not close this page while the restore is running.</p></div></section>
 </main></div><script>
 const $=id=>document.getElementById(id);let data=null;let imageData='';
 function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',commands:'Commands',moderation:'Moderation',modules:'Modules',community:'Community features',backup:'Data backup'})[name]}
@@ -185,6 +185,7 @@ $('saveCommunity').onclick=async()=>{const status=$('communityStatus');status.te
 $('saveModules').onclick=async()=>{try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({music:{enabled:$('musicEnabled').checked},ai:{enabled:$('aiEnabled').checked},autorole:{enabled:$('autoroleEnabled').checked,roleId:$('autoroleRole').value}})});$('moduleStatus').textContent='Saved.'}catch(e){$('moduleStatus').textContent=e.message}};
 $('runAction').onclick=async()=>{const status=$('actionStatus');status.textContent='Working…';try{const result=await api('/api/admin-command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:$('adminAction').value,userId:$('targetUser').value,amount:Number($('actionAmount').value)||0,channelId:$('actionChannel').value,reason:$('actionReason').value})});status.textContent=result.message||'Command completed.'}catch(e){status.textContent=e.message}};
 $('downloadDataBackup').onclick=()=>{const status=$('backupStatus');status.textContent='Preparing backup…';const link=document.createElement('a');link.href='/api/data-backup';link.download='';document.body.appendChild(link);link.click();link.remove();status.textContent='If the download did not start, sign in again and retry.'};
+$('restoreDataBackup').onclick=async()=>{const file=$('restoreBackupFile').files[0],status=$('restoreStatus');if(!file){status.textContent='Choose a JSON backup file first.';return}if(!confirm('Restore this backup? Matching text files on Railway will be overwritten.'))return;status.textContent='Validating and restoring…';try{const backup=JSON.parse(await file.text());const result=await api('/api/data-restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({backup})});status.textContent='Restore complete: '+result.restored+' files restored. Reloading dashboard…';setTimeout(()=>location.reload(),1200)}catch(e){status.textContent=e.message}};
 load();
 </script></body></html>`;
 }
@@ -235,6 +236,56 @@ function startDashboard(client) {
         if (session.guildId !== GUILD_ID) return send(res, 403, { error: 'Access denied' });
         const liveGuild = client.guilds.cache.get(GUILD_ID);
         if (!liveGuild) return send(res, 503, { error: 'Bot is not in the configured server' });
+        if (req.method === 'POST' && url.pathname === '/api/data-restore') {
+          const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
+          if (!actor || (!actor.permissions.has('Administrator') && !actor.permissions.has('ManageGuild'))) return send(res, 403, { error: 'You no longer have server management permission.' });
+          const body = await readBody(req, 15 * 1024 * 1024);
+          const archive = body.backup;
+          if (!archive || archive.format !== 'hardboy-bot-text-backup' || archive.version !== 1 || !Array.isArray(archive.files) || archive.files.length > 250) return send(res, 400, { error: 'Invalid or unsupported backup file.' });
+          if (!archive.guild || archive.guild.id !== liveGuild.id) return send(res, 400, { error: 'This backup belongs to a different Discord server.' });
+          const allowedExtensions = new Set(['.json','.txt','.log','.csv','.yaml','.yml','.md','.ini','.toml']);
+          const dataRoot = path.resolve('/app/data');
+          const warningPath = path.resolve(process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json'));
+          const restoredPaths = [];
+          let totalBytes = 0;
+          const validated = [];
+          for (const item of archive.files) {
+            if (!item || typeof item.path !== 'string' || typeof item.content !== 'string') return send(res, 400, { error: 'Backup contains an invalid file entry.' });
+            const name = item.path;
+            if (name.length > 240 || name.includes('\\') || name.startsWith('/') || name.split('/').some(part => !part || part === '.' || part === '..' || part.startsWith('.'))) return send(res, 400, { error: 'Backup contains an unsafe file path.' });
+            const bytes = Buffer.byteLength(item.content, 'utf8');
+            totalBytes += bytes;
+            if (bytes > 2 * 1024 * 1024 || totalBytes > 12 * 1024 * 1024) return send(res, 400, { error: 'Backup exceeds the allowed restore size.' });
+            if (item.content.includes('\\u0000')) return send(res, 400, { error: 'Backup contains binary content.' });
+            let target;
+            if (name.startsWith('external/')) {
+              const base = name.slice('external/'.length);
+              const allowedExternal = new Set([path.basename(SETTINGS_FILE), path.basename(warningPath)]);
+              if (!base || base.includes('/') || !allowedExternal.has(base)) continue;
+              target = base === path.basename(SETTINGS_FILE) ? path.resolve(SETTINGS_FILE) : warningPath;
+            } else {
+              if (!allowedExtensions.has(path.extname(name).toLowerCase())) continue;
+              target = path.resolve(dataRoot, name);
+              if (!target.startsWith(dataRoot + path.sep)) return send(res, 400, { error: 'Backup contains an unsafe file path.' });
+            }
+            validated.push({ target, content: item.content });
+          }
+          for (const item of validated) {
+            fs.mkdirSync(path.dirname(item.target), { recursive: true });
+            let cursor = path.dirname(item.target);
+            while (cursor.startsWith(dataRoot + path.sep) || cursor === dataRoot) {
+              if (fs.existsSync(cursor) && fs.lstatSync(cursor).isSymbolicLink()) throw new Error('Refusing to restore through a symbolic link.');
+              if (cursor === dataRoot) break;
+              cursor = path.dirname(cursor);
+            }
+            const temp = item.target + '.restore-' + crypto.randomBytes(6).toString('hex');
+            fs.writeFileSync(temp, item.content, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+            fs.renameSync(temp, item.target);
+            restoredPaths.push(item.target);
+          }
+          if (restoredPaths.includes(path.resolve(SETTINGS_FILE))) settings = loadSettings();
+          return send(res, 200, { ok: true, restored: restoredPaths.length });
+        }
         if (req.method === 'GET' && url.pathname === '/api/data-backup') {
           const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
           if (!actor || (!actor.permissions.has('Administrator') && !actor.permissions.has('ManageGuild'))) return send(res, 403, { error: 'You no longer have server management permission.' });
