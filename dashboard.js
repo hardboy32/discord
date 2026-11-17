@@ -303,7 +303,7 @@ $('restoreDataBackup').onclick=async()=>{const file=$('restoreBackupFile').files
 load();
 </script></body></html>`;
 }
-function startDashboard(client) {
+function startDashboard(client, playFromDashboard) {
   if (!CLIENT_ID || !CLIENT_SECRET || !SESSION_SECRET || !REDIRECT_URI) {
     console.warn('Dashboard is disabled: configure DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_SESSION_SECRET and DASHBOARD_REDIRECT_URI.');
     return;
@@ -450,6 +450,38 @@ function startDashboard(client) {
           const payload = JSON.stringify(archive, null, 2);
           res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="hardboy-bot-backup-' + new Date().toISOString().slice(0,10) + '.json"', 'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
           return res.end(payload);
+        }
+        if (req.method === 'POST' && url.pathname === '/api/music/play') {
+          if (!settings.music.enabled) return send(res, 403, { error: 'Music is disabled in the Modules section.' });
+          if (typeof playFromDashboard !== 'function') return send(res, 503, { error: 'Dashboard music playback is unavailable.' });
+          const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
+          if (!actor || (!actor.permissions.has('Administrator') && !actor.permissions.has('ManageGuild'))) {
+            return send(res, 403, { error: 'You need Administrator or Manage Server permission to play music from the dashboard.' });
+          }
+          const body = await readBody(req, 5000);
+          const voiceChannelId = String(body.voiceChannelId || '').trim();
+          const trackUrl = String(body.url || '').trim();
+          if (!voiceChannelId) return send(res, 400, { error: 'Choose a voice channel.' });
+          if (!/^https?:\/\//i.test(trackUrl) || trackUrl.length > 2000) {
+            return send(res, 400, { error: 'Paste a valid YouTube or SoundCloud track link.' });
+          }
+          const voiceChannel = await liveGuild.channels.fetch(voiceChannelId).catch(() => null);
+          if (!voiceChannel || voiceChannel.type !== 2) {
+            return send(res, 400, { error: 'The selected channel is not a regular voice channel.' });
+          }
+          try {
+            const result = await playFromDashboard(GUILD_ID, voiceChannelId, trackUrl, session.user.username);
+            return send(res, 200, {
+              ok: true,
+              title: result.track.title,
+              duration: result.track.duration,
+              position: result.position,
+              channelName: result.channelName,
+            });
+          } catch (error) {
+            console.error('Dashboard music playback failed:', error.stack || error);
+            return send(res, error.status || 400, { error: error.message || 'Could not start playback.' });
+          }
         }
         if (req.method === 'GET' && url.pathname === '/api/me') {
           const channels = await liveGuild.channels.fetch();
