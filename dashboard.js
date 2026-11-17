@@ -102,7 +102,7 @@ main{padding:32px;max-width:1300px;width:100%;margin:auto}.top{display:flex;just
 @media(max-width:800px){.shell{grid-template-columns:1fr}.side{height:auto;position:relative;padding:14px}.brand{margin:4px 8px 12px}.nav{display:flex;overflow:auto}.nav button{white-space:nowrap;padding:9px}.sidefoot{display:none}main{padding:18px}.stats,.grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
-<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="modules">⚙ Modules</button><button data-page="community">✧ Community</button>
+<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="modules">⚙ Modules</button><button data-page="community">✧ Community</button><button data-page="backup">⬇ Data backup</button>
 </nav><div class="sidefoot">Single server • Secure admin access</div></aside><main>
 <header class="top"><div><div class="eyebrow">Control center</div><h1 id="pageTitle">Overview</h1><div class="muted" id="userName">Loading server…</div></div><div><span class="tag" id="serverName">Connected</span></div></header>
 <section id="page-overview" class="page"><div class="stats"><div class="stat"><span class="muted">Members</span><b id="memberCount">—</b></div><div class="stat"><span class="muted">Text channels</span><b id="channelCount">—</b></div><div class="stat"><span class="muted">Bot status</span><b style="color:var(--green)">Online</b></div></div><div class="panel" style="margin-top:18px"><h2>Welcome to your control center</h2><p class="muted">Manage welcome messages, moderation tools and bot modules from one place. Changes are saved to your Railway volume.</p><button onclick="showPage('welcome')">Configure welcome system</button></div><div class="panel"><h2>Quick access</h2><div class="grid"><button class="secondary" onclick="showPage('commands')">Browse bot commands</button><button class="secondary" onclick="showPage('moderation')">Moderation settings</button></div></div></section>
@@ -142,9 +142,10 @@ main{padding:32px;max-width:1300px;width:100%;margin:auto}.top{display:flex;just
 <p class="hint">Disabling a feature pauses its commands and interactions; saved data is retained. The bot needs the relevant Discord permissions and the Railway Volume must remain mounted at /app/data.</p></div>
 <div class="panel"><h2>Advanced module configuration</h2><p class="muted">Configure the behavior of every community module here. These settings are saved on the Railway Volume and are read by the bot.</p><div id="communityConfigGrid" class="grid"></div><div class="actions"><button id="saveCommunityConfig">Save all advanced settings</button><span id="communityConfigStatus"></span></div><p class="hint">Some actions that publish Discord messages (for example creating a ticket or verification panel) remain explicit actions; these settings control their defaults and runtime behavior.</p></div>
 </section>
+<section id="page-backup" class="page hidden"><div class="panel"><h2>Complete bot data backup</h2><p class="muted">Download a single JSON archive containing the bot's persistent text data and configuration files from the Railway Volume.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>/app/data</b></div><div class="stat"><span class="muted">Security</span><b>Admin only</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files found in the data folder. Binary files such as welcome images and secrets/tokens are not included. Keep the downloaded backup somewhere safe.</p><div class="actions"><button id="downloadDataBackup">Download complete data backup</button><span id="backupStatus"></span></div></div></section>
 </main></div><script>
 const $=id=>document.getElementById(id);let data=null;let imageData='';
-function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',commands:'Commands',moderation:'Moderation',modules:'Modules',community:'Community features'})[name]}
+function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',commands:'Commands',moderation:'Moderation',modules:'Modules',community:'Community features',backup:'Data backup'})[name]}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 function options(select,channels){channels=channels.filter(c=>c.type===0||c.type===5);select.innerHTML='<option value="">Select channel</option>'+channels.map(c=>'<option value="'+c.id+'"></option>').join('');Array.from(select.options).forEach((o,i)=>{if(i)o.textContent='# '+channels[i-1].name})}
 function preview(){const msg=$('welcomeMessage').value||'Welcome {user} to {server}!';$('previewMessage').textContent=msg.replaceAll('{user}','@NewMember').replaceAll('{username}','NewMember').replaceAll('{server}',data.guild.name).replaceAll('{count}',String(data.guild.memberCount||0));$('previewServer').textContent=data.guild.name}
@@ -183,6 +184,7 @@ $('saveModeration').onclick=async()=>{try{await api('/api/settings',{method:'PUT
 $('saveCommunity').onclick=async()=>{const status=$('communityStatus');status.textContent='Saving…';try{const community={tickets:$('featureTickets').checked,polls:$('featurePolls').checked,giveaways:$('featureGiveaways').checked,suggestions:$('featureSuggestions').checked,verification:$('featureVerification').checked,roleButtons:$('featureRoleButtons').checked,levels:$('featureLevels').checked,economy:$('featureEconomy').checked,tempVoice:$('featureTempVoice').checked,invites:$('featureInvites').checked,streamAlerts:$('featureStreamAlerts').checked,customCommands:$('featureCustomCommands').checked,backup:$('featureBackup').checked};await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({community})});status.textContent='Saved. Disabled features are paused.'}catch(e){status.textContent=e.message}};
 $('saveModules').onclick=async()=>{try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({music:{enabled:$('musicEnabled').checked},ai:{enabled:$('aiEnabled').checked},autorole:{enabled:$('autoroleEnabled').checked,roleId:$('autoroleRole').value}})});$('moduleStatus').textContent='Saved.'}catch(e){$('moduleStatus').textContent=e.message}};
 $('runAction').onclick=async()=>{const status=$('actionStatus');status.textContent='Working…';try{const result=await api('/api/admin-command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:$('adminAction').value,userId:$('targetUser').value,amount:Number($('actionAmount').value)||0,channelId:$('actionChannel').value,reason:$('actionReason').value})});status.textContent=result.message||'Command completed.'}catch(e){status.textContent=e.message}};
+$('downloadDataBackup').onclick=()=>{const status=$('backupStatus');status.textContent='Preparing backup…';const link=document.createElement('a');link.href='/api/data-backup';link.download='';document.body.appendChild(link);link.click();link.remove();status.textContent='If the download did not start, sign in again and retry.'};
 load();
 </script></body></html>`;
 }
@@ -233,6 +235,51 @@ function startDashboard(client) {
         if (session.guildId !== GUILD_ID) return send(res, 403, { error: 'Access denied' });
         const liveGuild = client.guilds.cache.get(GUILD_ID);
         if (!liveGuild) return send(res, 503, { error: 'Bot is not in the configured server' });
+        if (req.method === 'GET' && url.pathname === '/api/data-backup') {
+          const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
+          if (!actor || (!actor.permissions.has('Administrator') && !actor.permissions.has('ManageGuild'))) return send(res, 403, { error: 'You no longer have server management permission.' });
+          const allowedExtensions = new Set(['.json','.txt','.log','.csv','.yaml','.yml','.md','.ini','.toml']);
+          const excludedNames = new Set(['.env','credentials.json','secrets.json','token.json']);
+          const files = [];
+          const maxFiles = 250;
+          const maxBytes = 12 * 1024 * 1024;
+          let totalBytes = 0;
+          const dataRoot = path.resolve('/app/data');
+          function collectTextFiles(dir) {
+            if (!fs.existsSync(dir)) return;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (files.length >= maxFiles || totalBytes >= maxBytes) break;
+              if (entry.name.startsWith('.') || excludedNames.has(entry.name.toLowerCase())) continue;
+              const full = path.join(dir, entry.name);
+              if (entry.isSymbolicLink()) continue;
+              if (entry.isDirectory()) { collectTextFiles(full); continue; }
+              if (!entry.isFile() || !allowedExtensions.has(path.extname(entry.name).toLowerCase())) continue;
+              const stat = fs.statSync(full);
+              if (stat.size > 2 * 1024 * 1024 || totalBytes + stat.size > maxBytes) continue;
+              const content = fs.readFileSync(full);
+              if (content.includes(0)) continue;
+              files.push({ path: path.relative(dataRoot, full).split(path.sep).join('/'), content: content.toString('utf8') });
+              totalBytes += stat.size;
+            }
+          }
+          collectTextFiles(dataRoot);
+          const extraFiles = [SETTINGS_FILE, process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json')];
+          for (const full of extraFiles) {
+            const resolved = path.resolve(full);
+            if (resolved.startsWith(dataRoot + path.sep) || resolved === dataRoot || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) continue;
+            if (!allowedExtensions.has(path.extname(resolved).toLowerCase()) || files.length >= maxFiles) continue;
+            const stat = fs.statSync(resolved);
+            if (stat.size > 2 * 1024 * 1024 || totalBytes + stat.size > maxBytes) continue;
+            const content = fs.readFileSync(resolved);
+            if (content.includes(0)) continue;
+            files.push({ path: 'external/' + path.basename(resolved), content: content.toString('utf8') });
+            totalBytes += stat.size;
+          }
+          const archive = { format: 'hardboy-bot-text-backup', version: 1, createdAt: new Date().toISOString(), guild: { id: liveGuild.id, name: liveGuild.name }, fileCount: files.length, totalBytes, files };
+          const payload = JSON.stringify(archive, null, 2);
+          res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="hardboy-bot-backup-' + new Date().toISOString().slice(0,10) + '.json"', 'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+          return res.end(payload);
+        }
         if (req.method === 'GET' && url.pathname === '/api/me') {
           const channels = await liveGuild.channels.fetch();
           const roles = await liveGuild.roles.fetch();
