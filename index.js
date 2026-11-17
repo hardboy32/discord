@@ -17,7 +17,7 @@ const ffmpegPath = [
 ].find(candidate => candidate && fs.existsSync(candidate));
 
 if (!ffmpegPath) {
-  console.error('FFmpeg is missing. Install it in Infrlo Build Command or set FFMPEG_PATH.');
+  console.error('FFmpeg is missing. Check that ffmpeg-static installed correctly or set FFMPEG_PATH.');
   process.exit(1);
 }
 console.log('Using FFmpeg binary:', ffmpegPath);
@@ -70,7 +70,7 @@ const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
 
 if (!TOKEN) {
-  console.error('Missing DISCORD_TOKEN. Add the bot token in Infrlo Environment Variables.');
+  console.error('Missing DISCORD_TOKEN. Add the bot token in Railway Variables.');
   process.exit(1);
 }
 
@@ -701,7 +701,7 @@ async function registerCommands() {
   } else {
     await rest.put(Routes.applicationCommands(appId), { body: commands });
     console.log('Registered ' + commands.length + ' global slash commands.');
-    console.log('For faster command updates while testing, set DISCORD_GUILD_ID in Infrlo.');
+    console.log('For faster command updates while testing, set DISCORD_GUILD_ID in Railway Variables.');
   }
 }
 
@@ -939,7 +939,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'activity': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         if (!(await isBotOwner(interaction.user.id))) {
-          return respond(interaction, 'Only the bot owner can change the global activity. Set BOT_OWNER_ID in Infrlo if automatic owner detection does not work.');
+          return respond(interaction, 'Only the bot owner can change the global activity. Set BOT_OWNER_ID in Railway Variables if automatic owner detection does not work.');
         }
 
         const type = interaction.options.getString('type', true);
