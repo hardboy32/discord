@@ -19,6 +19,13 @@ When a track starts, the bot posts or updates one music player message in the te
 - `/warn`, `/warnings`, `/clearwarns`
 - `/ping`, `/help`, `/activity`
 
+### AutoMod and server logs
+- Optional Discord invite filtering, message-spam detection (5 messages / 5 seconds), mass-mention filtering, and blocked-word filtering.
+- AutoMod ignores members with Manage Messages or Administrator permission.
+- Configurable event logging for joins, departures, deleted/edited messages (without recording message content), bans, unbans, and channel/role creation or deletion.
+- Configurable goodbye messages with `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
+- Configure AutoMod and event logging from the dashboard. Set the log channel in the Moderation page.
+
 Moderation commands require the corresponding Discord permissions. The bot role must be above members it is asked to moderate.
 
 ### AI chat
