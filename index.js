@@ -1277,20 +1277,29 @@ client.on(Events.GuildMemberAdd, async (member) => {
   if (!config.enabled || !config.channelId) return;
   const channel = member.guild.channels.cache.get(config.channelId);
   if (!channel || !channel.isTextBased()) return;
+
+  // Image mode sends only the uploaded image; text placeholders and mention
+  // settings belong exclusively to text mode.
+  if (config.type === 'image') {
+    if (!config.imagePath || !fs.existsSync(config.imagePath)) {
+      console.error('Welcome image mode is enabled, but the image file is missing.');
+      return;
+    }
+    await channel.send({ files: [config.imagePath] })
+      .catch(error => console.error('Welcome image failed:', error.message || error));
+    return;
+  }
+
   const shouldMention = config.mention !== false;
   const content = String(config.message || 'Welcome {user} to {server}!')
     .replace(/\{user\}/g, shouldMention ? '<@' + member.id + '>' : member.user.username)
     .replace(/\{username\}/g, member.user.username)
     .replace(/\{server\}/g, member.guild.name)
     .replace(/\{count\}/g, String(member.guild.memberCount));
-  const payload = {
+  await channel.send({
     content,
     allowedMentions: shouldMention ? { users: [member.id] } : { parse: [] },
-  };
-  if (config.type === 'image' && config.imagePath && fs.existsSync(config.imagePath)) {
-    payload.files = [config.imagePath];
-  }
-  await channel.send(payload).catch(error => console.error('Welcome message failed:', error.message || error));
+  }).catch(error => console.error('Welcome message failed:', error.message || error));
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
