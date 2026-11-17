@@ -738,6 +738,41 @@ async function connectVoice(guild, channel, queue) {
   return connection;
 }
 
+async function playTrackFromDashboard(guildId, voiceChannelId, url, requestedBy = 'Dashboard') {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('The bot is not connected to the configured Discord server.');
+
+  const channel = await guild.channels.fetch(voiceChannelId).catch(() => null);
+  if (!channel || channel.type !== 2) {
+    throw new Error('Choose a regular voice channel from this server.');
+  }
+
+  const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+  if (!botMember) throw new Error('Could not verify the bot member in this server.');
+  const permissions = channel.permissionsFor(botMember);
+  if (!permissions ||
+      !permissions.has(PermissionFlagsBits.Connect) ||
+      !permissions.has(PermissionFlagsBits.Speak)) {
+    throw new Error('The bot needs Connect and Speak permissions in #' + channel.name + '.');
+  }
+
+  const input = String(url || '').trim();
+  if (!/^https?:\/\//i.test(input)) {
+    throw new Error('Paste a YouTube or SoundCloud track link.');
+  }
+
+  const track = await findTrack(input, requestedBy || 'Dashboard');
+  const queue = getQueue(guild.id);
+  await connectVoice(guild, channel, queue);
+
+  const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
+  queue.tracks.push(track);
+  if (!queue.current) void playNext(guild.id);
+
+  console.log('Dashboard music request:', track.title, '->', channel.name, '| queue position:', position);
+  return { track, position, channelName: channel.name };
+}
+
 function getTrackThumbnail(...candidates) {
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) {
@@ -1306,7 +1341,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
-  startDashboard(readyClient);
+  startDashboard(readyClient, playTrackFromDashboard);
   console.log(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
   console.log('Bot activity is cleared. Use /activity to set it.');
