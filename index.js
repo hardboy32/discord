@@ -175,6 +175,7 @@ if (!TOKEN) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
@@ -1089,7 +1090,7 @@ async function enqueueTrackFromMessage(message, query) {
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || !client.user) return;
   const guildSettings = getDashboardSettings(message.guildId);
-  if (guildSettings.moderation.enabled && guildSettings.moderation.antiLink && /discord\\.gg\\/|discord(?:app)?\\.com\\/invite\\//i.test(message.content)) {
+  if (guildSettings.moderation.enabled && guildSettings.moderation.antiLink && /discord\.gg\/|discord(?:app)?\.com\/invite\//i.test(message.content)) {
     if (message.member && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
     await message.delete().catch(() => {});
     const logChannel = guildSettings.moderation.logChannelId && message.guild.channels.cache.get(guildSettings.moderation.logChannelId);
@@ -1188,9 +1189,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
   const channel = member.guild.channels.cache.get(config.channelId);
   if (!channel || !channel.isTextBased()) return;
   const content = String(config.message || 'Welcome {user} to {server}!')
-    .replace(/\\{user\\}/g, '<@' + member.id + '>')
-    .replace(/\\{server\\}/g, member.guild.name)
-    .replace(/\\{count\\}/g, String(member.guild.memberCount));
+    .replace(/\{user\}/g, '<@' + member.id + '>')
+    .replace(/\{server\}/g, member.guild.name)
+    .replace(/\{count\}/g, String(member.guild.memberCount));
   await channel.send({ content, allowedMentions: { users: [member.id] } }).catch(error => console.error('Welcome message failed:', error.message || error));
 });
 
