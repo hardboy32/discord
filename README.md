@@ -34,6 +34,8 @@ When a track starts, the bot posts or updates one music player message in the te
 - `/custom-set`, `/custom-run`, and `/custom-delete` — save reusable server responses.
 - `/server-backup` — export role and channel structure as JSON.
 - `/server-restore` — recreate missing roles and channels from that JSON (does not restore messages, member assignments, category nesting, or permission overwrites).
+- `/invites` and `/invite-leaderboard` — track invite attribution and show inviter rankings (the bot needs Manage Server permission to fetch invites).
+- `/stream-alert-setup` — monitor Twitch, YouTube, and Kick creators and post live alerts in a selected channel. Add `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` for Twitch, and `YOUTUBE_API_KEY` for YouTube; Kick uses a public endpoint that may change.
 - `/stream-alert-setup` — monitor Twitch, YouTube, and Kick creators and post live alerts in a selected channel. Add `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` for Twitch, and `YOUTUBE_API_KEY` for YouTube. Kick uses a public endpoint that may change.
 - Community configuration, votes, giveaway entries, and XP are stored in `/app/data/community-data.json` (keep the Railway Volume mounted at `/app/data`).
 
@@ -104,6 +106,8 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 | `BOT_OWNER_ID` | Optional | Your Discord user ID for the owner-only `/activity` command |
 | `GROQ_API_KEY` | Optional | Enables AI chat replies |
 | `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |
+| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
+| `YOUTUBE_API_KEY` | Optional | YouTube live stream alerts |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
 | `YOUTUBE_API_KEY` | Optional | YouTube live stream alerts |
 | `DASHBOARD_GUILD_ID` | Optional | Single dashboard server; defaults to `686002315148394502` |
