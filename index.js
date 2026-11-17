@@ -68,9 +68,9 @@ const { attachCoreModules, getCoreCommands, handleCoreInteraction } = require('.
 const { getCommunityCommands, handleCommunityInteraction, attachCommunityModules } = require('./community');
 const YOUTUBE_COOKIES_B64 = (process.env.YOUTUBE_COOKIES_B64 || '').trim();
 const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
-const YTDLP_COOKIES_PATH = path.join('/tmp', 'youtube-cookies.txt');
 let ytDlpInitPromise = null;
-let ytDlpCookiesPath = null;
+let ytDlpCookiesText = null;
+let ytDlpCookieCount = 0;
 
 async function ensureYtDlpReady() {
   if (!ytDlpInitPromise) {
@@ -89,15 +89,19 @@ async function ensureYtDlpReady() {
       }
       if (YOUTUBE_COOKIES_B64) {
         const cookieText = Buffer.from(YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
-        if (!cookieText.includes('# Netscape HTTP Cookie File') &&
-            !cookieText.includes('# HTTP Cookie File') &&
-            !cookieText.split(/\r?\n/).some(line => line.startsWith('.youtube.com') || line.startsWith('#HttpOnly_.youtube.com'))) {
-          throw new Error('YOUTUBE_COOKIES_B64 must contain a Netscape-format YouTube cookies file encoded as Base64.');
+        const cookieLines = cookieText.split(/\r?\n/).filter(line => {
+          if (!line || line.startsWith('#')) return false;
+          const fields = line.split('\t');
+          return fields.length >= 7 &&
+            /^(?:#HttpOnly_)?(?:\.?youtube\.com|\.?google\.com|\.?googleusercontent\.com)$/i.test(fields[0]);
+        });
+        if (!cookieLines.length) {
+          throw new Error('YOUTUBE_COOKIES_B64 contains no valid YouTube/Google Netscape cookie entries. Re-export the cookies and encode the complete file as Base64.');
         }
-        await fs.promises.writeFile(YTDLP_COOKIES_PATH, cookieText, { mode: 0o600 });
-        await fs.promises.chmod(YTDLP_COOKIES_PATH, 0o600);
-        ytDlpCookiesPath = YTDLP_COOKIES_PATH;
-        console.log('YouTube cookies loaded from Railway secret.');
+        ytDlpCookiesText = cookieText;
+        ytDlpCookieCount = cookieLines.length;
+        console.log('YouTube cookies loaded from Railway secret (' + ytDlpCookieCount + ' entries).');
+        console.log('A fresh private cookie-file copy will be created for every yt-dlp process.');
       } else {
         console.log('YouTube cookies are not configured; yt-dlp will try without account cookies.');
       }
@@ -107,10 +111,26 @@ async function ensureYtDlpReady() {
   await ytDlpInitPromise;
 }
 
+async function createYtDlpCookieCopy() {
+  if (!ytDlpCookiesText) return null;
+  const cookiePath = path.join('/tmp',
+    'youtube-cookies-' + process.pid + '-' + Date.now() + '-' +
+    Math.random().toString(36).slice(2) + '.txt');
+  await fs.promises.writeFile(cookiePath, ytDlpCookiesText, { mode: 0o600, flag: 'wx' });
+  await fs.promises.chmod(cookiePath, 0o600);
+  return cookiePath;
+}
+
+async function removeYtDlpCookieCopy(cookiePath) {
+  if (!cookiePath) return;
+  await fs.promises.unlink(cookiePath).catch(() => {});
+}
+
 async function getYoutubeInfo(queryOrUrl) {
   await ensureYtDlpReady();
   const args = ['--dump-single-json', '--no-warnings', '--no-playlist', '--skip-download'];
-  if (ytDlpCookiesPath) args.push('--cookies', ytDlpCookiesPath);
+  const cookiePath = await createYtDlpCookieCopy();
+  if (cookiePath) args.push('--cookies', cookiePath);
   args.push(queryOrUrl);
   return new Promise((resolve, reject) => {
     const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -119,9 +139,14 @@ async function getYoutubeInfo(queryOrUrl) {
     const timeout = setTimeout(() => child.kill('SIGKILL'), 45000);
     child.stdout.on('data', chunk => { stdout += chunk.toString(); });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-3000); });
-    child.on('error', error => { clearTimeout(timeout); reject(new Error('Could not start yt-dlp: ' + error.message)); });
+    child.on('error', error => {
+      clearTimeout(timeout);
+      void removeYtDlpCookieCopy(cookiePath);
+      reject(new Error('Could not start yt-dlp: ' + error.message));
+    });
     child.on('close', code => {
       clearTimeout(timeout);
+      void removeYtDlpCookieCopy(cookiePath);
       if (code !== 0 || !stdout.trim()) {
         const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
         reject(new Error('YouTube extraction failed: ' + (safeError || 'yt-dlp exited with code ' + code)));
@@ -141,13 +166,15 @@ async function getYoutubeInfo(queryOrUrl) {
 async function createYoutubeStream(url) {
   await ensureYtDlpReady();
   const args = ['--no-warnings', '--no-progress', '--format', 'bestaudio/best', '--output', '-', '--no-playlist'];
-  if (ytDlpCookiesPath) args.push('--cookies', ytDlpCookiesPath);
+  const cookiePath = await createYtDlpCookieCopy();
+  if (cookiePath) args.push('--cookies', cookiePath);
   args.push(url);
   const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-2000); });
   child.on('error', error => console.error('yt-dlp stream process error:', error.message || error));
   child.on('close', code => {
+    void removeYtDlpCookieCopy(cookiePath);
     if (code !== 0) {
       const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
       console.error('yt-dlp stream ended with code ' + code + ':', safeError || 'no diagnostic output');
