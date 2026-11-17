@@ -64,6 +64,7 @@ const {
 } = require('@discordjs/voice');
 const play = require('@iamtraction/play-dl');
 const { startDashboard, getDashboardSettings } = require('./dashboard');
+const { attachCoreModules } = require('./modules');
 const YOUTUBE_COOKIES_B64 = (process.env.YOUTUBE_COOKIES_B64 || '').trim();
 const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
 const YTDLP_COOKIES_PATH = path.join('/tmp', 'youtube-cookies.txt');
@@ -181,6 +182,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+attachCoreModules(client, getDashboardSettings);
 const queues = new Map();
 const aiConversationHistory = new Map();
 const aiCooldowns = new Map();
