@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check dashboard.js && node --check modules.js"
+    "check": "node --check index.js && node --check dashboard.js && node --check modules.js && node --check community.js"
   },
   "engines": {
     "node": ">=22.12.0 <23"
