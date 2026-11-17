@@ -57,10 +57,24 @@ AI replies use the member's language, maintain a short in-memory conversation hi
 | `DISCORD_GUILD_ID` | Optional | Test server ID; commands update faster in this server. Leave blank for global commands |
 | `BOT_OWNER_ID` | Optional | Your Discord user ID for the owner-only `/activity` command |
 | `GROQ_API_KEY` | Optional | Enables AI chat replies |
-| `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |
+| `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |\n| `YOUTUBE_COOKIES_B64` | Optional | Base64-encoded Netscape-format YouTube cookies; helps yt-dlp access videos that require a signed-in session |
 | `WARNINGS_FILE` | Optional | Warnings JSON path; default is `./data/warnings.json` |
 
-Never commit real bot tokens or API keys to GitHub. Add secrets only in Railway Variables.
+Never commit real bot tokens, API keys, or YouTube cookies to GitHub. Add secrets only in Railway Variables.
+
+### Configure YouTube cookies (optional)
+
+The bot uses the official standalone `yt-dlp` binary for YouTube search and playback. It downloads the binary into the temporary runtime directory on first use; no extra Railway build command or Python installation is required.
+
+If YouTube returns "Sign in to confirm you're not a bot", you can optionally provide a Netscape-format cookies file:
+
+1. Use a separate YouTube/Google account that has no personal data, payment methods, or important services.
+2. Export cookies for YouTube in Netscape cookies.txt format. Treat this file like a password.
+3. Base64-encode the entire file (Linux/macOS: `base64 -w 0 cookies.txt`; Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))`).
+4. Add the resulting single-line value to Railway Variables as `YOUTUBE_COOKIES_B64`.
+5. Redeploy. The bot writes the decoded cookies to a permission-restricted temporary file and never prints cookie contents in logs.
+
+Do not send cookies in Discord, chat, GitHub issues, or repository files. Cookies can expire or be revoked, and this does not guarantee YouTube access if the hosting IP is blocked.
 
 ## Persistent storage (recommended)
 
@@ -97,7 +111,7 @@ Groq free-tier rate limits apply and can change. If the key is absent, the bot's
 - **Bot does not log in:** check `DISCORD_TOKEN` and confirm the token has not been reset.
 - **AI does not answer:** check `GROQ_API_KEY`, the selected model, and the Discord Message Content Intent setting.
 - **Slash commands do not appear:** temporarily set `DISCORD_GUILD_ID` to your test server ID and confirm the bot was invited with `applications.commands`.
-- **Music does not play:** check Railway logs for source extraction/network errors and confirm the bot has Connect and Speak permissions. YouTube and SoundCloud extraction can be affected by upstream changes.
+- **YouTube asks you to sign in:** configure `YOUTUBE_COOKIES_B64` with a Base64-encoded Netscape cookies file in Railway Variables. Cookies may expire, and YouTube may still block the hosting IP.\n- **Music does not play:** check Railway logs for source extraction/network errors and confirm the bot has Connect and Speak permissions. YouTube and SoundCloud extraction can be affected by upstream changes.
 - **Warnings disappear after redeploy:** confirm the Railway Volume is mounted at `/app/data`.
 
 ## Local checks
