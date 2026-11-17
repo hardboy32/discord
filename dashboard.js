@@ -256,7 +256,7 @@ function startDashboard(client) {
             const bytes = Buffer.byteLength(item.content, 'utf8');
             totalBytes += bytes;
             if (bytes > 2 * 1024 * 1024 || totalBytes > 12 * 1024 * 1024) return send(res, 400, { error: 'Backup exceeds the allowed restore size.' });
-            if (item.content.includes('\\u0000')) return send(res, 400, { error: 'Backup contains binary content.' });
+            if (item.content.includes('\u0000')) return send(res, 400, { error: 'Backup contains binary content.' });
             let target;
             if (name.startsWith('external/')) {
               const base = name.slice('external/'.length);
