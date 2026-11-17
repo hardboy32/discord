@@ -70,10 +70,10 @@ function send(res, status, body, type) {
   res.writeHead(status, { 'content-type': type || 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
-function readBody(req) {
+function readBody(req, limit = 20000) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', chunk => { data += chunk; if (data.length > 20000) reject(new Error('Request too large')); });
+    req.on('data', chunk => { data += chunk; if (data.length > limit) reject(new Error('Request too large')); });
     req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch { reject(new Error('Invalid JSON')); } });
     req.on('error', reject);
   });
@@ -193,7 +193,7 @@ function startDashboard(client) {
           return send(res, 200, { ok: true });
         }
         if (req.method === 'PUT' && url.pathname === '/api/welcome-image') {
-          const body = await readBody(req);
+          const body = await readBody(req, 7 * 1024 * 1024);
           const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ''));
           if (!match) return send(res, 400, { error: 'Upload a PNG, JPG or WebP image.' });
           const bytes = Buffer.from(match[2], 'base64');
