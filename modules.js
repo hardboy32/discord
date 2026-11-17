@@ -81,6 +81,11 @@ function attachCoreModules(client, getSettings) {
 
   client.on(Events.GuildMemberAdd, async member => {
     const config = getSettings(member.guild.id);
+    const autorole = config.autorole || {};
+    if (autorole.enabled && autorole.roleId) {
+      const role = member.guild.roles.cache.get(autorole.roleId) || await member.guild.roles.fetch(autorole.roleId).catch(() => null);
+      if (role && role.editable) await member.roles.add(role, 'Configured automatic member role').catch(error => console.warn('Auto-role assignment failed:', error.message || error));
+    }
     const goodbye = config.goodbye || {};
     if (config.logging && config.logging.enabled !== false) {
       await sendLog(member.guild, 'Member joined', member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
