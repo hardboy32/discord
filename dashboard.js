@@ -187,7 +187,7 @@ function startDashboard(client) {
           const channelIds = new Set((await liveGuild.channels.fetch()).filter(c => c && c.isTextBased()).map(c => c.id));
           const validChannel = id => !id || channelIds.has(id);
           if (!validChannel(body.welcome && body.welcome.channelId) || !validChannel(body.moderation && body.moderation.logChannelId)) return send(res, 400, { error: 'Invalid channel' });
-          settings = merge(defaults, body);
+          settings = merge(settings, body);
           settings.welcome.message = String(settings.welcome.message || defaults.welcome.message).slice(0, 500);
           saveSettings();
           return send(res, 200, { ok: true });
