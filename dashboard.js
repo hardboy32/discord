@@ -9,9 +9,37 @@ const CLIENT_SECRET = (process.env.DISCORD_CLIENT_SECRET || '').trim();
 const SESSION_SECRET = (process.env.DASHBOARD_SESSION_SECRET || '').trim();
 const REDIRECT_URI = (process.env.DASHBOARD_REDIRECT_URI || '').trim();
 const SETTINGS_FILE = process.env.DASHBOARD_SETTINGS_FILE || path.join('/app/data', 'dashboard-settings.json');
+const SESSIONS_FILE = process.env.DASHBOARD_SESSIONS_FILE || path.join(path.dirname(SETTINGS_FILE), 'dashboard-sessions.json');
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PORT = Number(process.env.PORT || 3000);
-const sessions = new Map();
+
+function loadSessions() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    const now = Date.now();
+    return new Map(Object.entries(saved).filter(([, session]) =>
+      session && typeof session === 'object' &&
+      typeof session.expires === 'number' && session.expires > now &&
+      session.user && typeof session.user.id === 'string' &&
+      session.guildId === GUILD_ID
+    ));
+  } catch {
+    return new Map();
+  }
+}
+const sessions = loadSessions();
 const states = new Map();
+
+function saveSessions() {
+  fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
+  const now = Date.now();
+  const active = Object.fromEntries([...sessions.entries()].filter(([, session]) =>
+    session && typeof session.expires === 'number' && session.expires > now
+  ));
+  const tempFile = SESSIONS_FILE + '.tmp';
+  fs.writeFileSync(tempFile, JSON.stringify(active), { mode: 0o600 });
+  fs.renameSync(tempFile, SESSIONS_FILE);
+}
 
 const defaults = {
   welcome: { enabled: false, channelId: '', message: 'Welcome {user} to {server}!', type: 'text', mention: true, imagePath: '', imageUrl: '' },
@@ -64,9 +92,16 @@ function getSession(req) {
   const supplied = Buffer.from(parts[1]);
   const expected = Buffer.from(sign(parts[0]));
   if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
-  const session = sessions.get(parts[0]);
+  let session = sessions.get(parts[0]);
+  // Recover a valid login from the Railway Volume after restarts or when another
+  // app instance handled the OAuth callback.
+  if (!session) {
+    session = loadSessions().get(parts[0]) || null;
+    if (session) sessions.set(parts[0], session);
+  }
   if (!session || session.expires < Date.now()) {
     sessions.delete(parts[0]);
+    saveSessions();
     return null;
   }
   return session;
@@ -282,12 +317,18 @@ function startDashboard(client) {
         if (!guild || !allowed(guild)) return send(res, 403, 'You must be a server owner or have Manage Server / Administrator permission.', 'text/plain');
         if (!client.guilds.cache.has(GUILD_ID)) return send(res, 503, 'The bot is not currently in the configured server.', 'text/plain');
         const sid = crypto.randomBytes(32).toString('hex');
-        sessions.set(sid, { user: { id: profile.id, username: profile.global_name || profile.username }, guildId: guild.id, accessToken: tokenData.access_token, expires: Date.now() + 8 * 60 * 60 * 1000 });
-        return res.writeHead(302, { location: '/', 'set-cookie': 'hb_session=' + encodeURIComponent(sid + '.' + sign(sid)) + '; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800' }).end();
+        // Only the minimum identity data is persisted; the Discord OAuth token is not stored.
+        sessions.set(sid, { user: { id: profile.id, username: profile.global_name || profile.username }, guildId: guild.id, expires: Date.now() + SESSION_TTL_MS });
+        saveSessions();
+        return res.writeHead(302, { location: '/', 'set-cookie': 'hb_session=' + encodeURIComponent(sid + '.' + sign(sid)) + '; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000' }).end();
       }
       if (req.method === 'POST' && url.pathname === '/auth/logout') {
         const s = getSession(req);
-        if (s) { const sid = cookieValue(req, 'hb_session').split('.')[0]; sessions.delete(sid); }
+        if (s) {
+          const sid = cookieValue(req, 'hb_session').split('.')[0];
+          sessions.delete(sid);
+          saveSessions();
+        }
         return res.writeHead(204, { 'set-cookie': 'hb_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' }).end();
       }
       if (url.pathname.startsWith('/api/')) {
