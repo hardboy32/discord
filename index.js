@@ -1092,14 +1092,6 @@ async function enqueueTrackFromMessage(message, query) {
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || !client.user) return;
   const guildSettings = getDashboardSettings(message.guildId);
-  if (guildSettings.moderation.enabled && guildSettings.moderation.antiLink && /discord\.gg\/|discord(?:app)?\.com\/invite\//i.test(message.content)) {
-    if (message.member && message.member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
-    await message.delete().catch(() => {});
-    const logChannel = guildSettings.moderation.logChannelId && message.guild.channels.cache.get(guildSettings.moderation.logChannelId);
-    if (logChannel && logChannel.isTextBased()) await logChannel.send('Removed an invite link posted by <@' + message.author.id + '>.').catch(() => {});
-    return;
-  }
-
   const isMentioned = message.mentions.users.has(client.user.id);
   const namePrefixPattern = /^\s*(?:\(\s*(?:محمد|ربات)\s*\)|(?:محمد|ربات))(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/u;
   const hasNamePrefix = namePrefixPattern.test(message.content);
