@@ -7,7 +7,7 @@ This repository is configured to run as a **persistent Discord bot service on Ra
 ### Music
 - `/play query` — search by song name or play a YouTube/SoundCloud URL
 - `/join`, `/queue`, `/skip`, `/pause`, `/resume`, `/stop`, `/leave`
-- Natural-language music requests, for example: `محمد آهنگ ... رو پخش کن`
+- Natural-language music requests, for example: `play the song ...`
 
 ### Interactive now-playing panel
 
@@ -23,7 +23,7 @@ Moderation commands require the corresponding Discord permissions. The bot role 
 
 ### AI chat
 When enabled, the bot can answer when a member:
-- Starts a message with `محمد` or `ربات`
+- Starts a message with `bot` or `assistant`
 - Mentions the bot
 - Replies directly to one of the bot's messages
 
