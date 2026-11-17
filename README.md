@@ -1,6 +1,6 @@
 # Discord Music + Moderation + AI Bot (Railway)
 
-This repository is configured to run as a **persistent Discord bot service on Railway**. It does not need a public domain, HTTP server, or exposed port.
+This repository runs the Discord bot and its single-server web dashboard together in one Railway service. The dashboard uses Discord OAuth2 and is locked to server `686002315148394502` by default.
 
 ## Features
 
@@ -29,6 +29,21 @@ When enabled, the bot can answer when a member:
 
 AI replies use the member's language, maintain a short in-memory conversation history per member/channel, and have a small per-user cooldown. AI is powered by the Groq API; it is not enabled until `GROQ_API_KEY` is configured.
 
+### Web dashboard
+
+The dashboard is served by the same Node.js process at the Railway public domain. It includes Welcome, Moderation, Music, and AI settings. Changes are saved to `/app/data/dashboard-settings.json` and are applied by the bot. The dashboard is restricted to the configured server; only its owner or members with Manage Server / Administrator can sign in.
+
+To enable it:
+1. In Discord Developer Portal, open your application **OAuth2** page and copy the Client Secret.
+2. In OAuth2 Redirects, add the exact URL `https://YOUR-RAILWAY-DOMAIN/auth/callback` after creating a Railway public domain.
+3. Add `DISCORD_CLIENT_SECRET`, `DASHBOARD_SESSION_SECRET` (a long random value), and `DASHBOARD_REDIRECT_URI` to Railway Variables. Keep `DASHBOARD_GUILD_ID` as `686002315148394502`.
+4. In Railway, create a public domain for this service. The dashboard listens on Railway's `PORT`; do not create a second service.
+5. Mount a Railway Volume at `/app/data` so dashboard settings and warning records persist.
+6. In Discord Developer Portal > Bot, enable **Server Members Intent** so welcome messages can be delivered. Message Content Intent is still needed for chat AI and natural-language music requests.
+7. Redeploy and open the Railway domain. Sign in with a Discord account that owns the server or has Manage Server / Administrator permission.
+
+Generate the session secret locally with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`. Never put the OAuth client secret or session secret in GitHub or chat.
+
 ## Deploy on Railway
 
 1. In Railway, create a new project and choose **Deploy from GitHub repo**.
@@ -44,8 +59,8 @@ AI replies use the member's language, maintain a short in-memory conversation hi
 - Runtime: Node.js 22 (minimum 22.12.0)
 - Build command: leave blank / automatic
 - Start command: `npm start`
-- Public networking/domain: not required
-- Port: not required
+- Public networking/domain: required for the dashboard
+- Port: Railway supplies `PORT`; no fixed port value is needed
 - FFmpeg: supplied by the `ffmpeg-static` npm dependency; no system package installation is configured
 
 ## Environment variables
@@ -57,7 +72,12 @@ AI replies use the member's language, maintain a short in-memory conversation hi
 | `DISCORD_GUILD_ID` | Optional | Test server ID; commands update faster in this server. Leave blank for global commands |
 | `BOT_OWNER_ID` | Optional | Your Discord user ID for the owner-only `/activity` command |
 | `GROQ_API_KEY` | Optional | Enables AI chat replies |
-| `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |\n| `YOUTUBE_COOKIES_B64` | Optional | Base64-encoded Netscape-format YouTube cookies; helps yt-dlp access videos that require a signed-in session |
+| `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |
+| `DASHBOARD_GUILD_ID` | Optional | Single dashboard server; defaults to `686002315148394502` |
+| `DISCORD_CLIENT_SECRET` | Dashboard | Discord OAuth2 Client Secret |
+| `DASHBOARD_SESSION_SECRET` | Dashboard | Long random secret used to sign login sessions |
+| `DASHBOARD_REDIRECT_URI` | Dashboard | Exact Railway URL ending in `/auth/callback` |
+| `DASHBOARD_SETTINGS_FILE` | Optional | Settings JSON path; default `/app/data/dashboard-settings.json` |\n| `YOUTUBE_COOKIES_B64` | Optional | Base64-encoded Netscape-format YouTube cookies; helps yt-dlp access videos that require a signed-in session |
 | `WARNINGS_FILE` | Optional | Warnings JSON path; default is `./data/warnings.json` |
 
 Never commit real bot tokens, API keys, or YouTube cookies to GitHub. Add secrets only in Railway Variables.
