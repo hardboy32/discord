@@ -127,7 +127,7 @@ function startDashboard(client) {
         if (!guild || !allowed(guild)) return send(res, 403, 'You must be a server owner or have Manage Server / Administrator permission.', 'text/plain');
         if (!client.guilds.cache.has(GUILD_ID)) return send(res, 503, 'The bot is not currently in the configured server.', 'text/plain');
         const sid = crypto.randomBytes(32).toString('hex');
-        sessions.set(sid, { user: { id: profile.id, username: profile.global_name || profile.username }, accessToken: tokenData.access_token, expires: Date.now() + 8 * 60 * 60 * 1000 });
+        sessions.set(sid, { user: { id: profile.id, username: profile.global_name || profile.username }, guildId: guild.id, accessToken: tokenData.access_token, expires: Date.now() + 8 * 60 * 60 * 1000 });
         return res.writeHead(302, { location: '/', 'set-cookie': 'hb_session=' + encodeURIComponent(sid + '.' + sign(sid)) + '; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800' }).end();
       }
       if (req.method === 'POST' && url.pathname === '/auth/logout') {
@@ -138,9 +138,7 @@ function startDashboard(client) {
       if (url.pathname.startsWith('/api/')) {
         const session = getSession(req);
         if (!session) return send(res, 401, { error: 'Sign in required' });
-        const guilds = await discord('/users/@me/guilds', session.accessToken);
-        const guild = guilds.find(g => g.id === GUILD_ID);
-        if (!guild || !allowed(guild)) return send(res, 403, { error: 'Access denied' });
+        if (session.guildId !== GUILD_ID) return send(res, 403, { error: 'Access denied' });
         const liveGuild = client.guilds.cache.get(GUILD_ID);
         if (!liveGuild) return send(res, 503, { error: 'Bot is not in the configured server' });
         if (req.method === 'GET' && url.pathname === '/api/me') {
