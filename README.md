@@ -20,6 +20,17 @@ When a track starts, the bot posts or updates one music player message in the te
 - `/ping`, `/help`, `/activity`
 
 
+
+### Community features
+- `/poll` — create interactive polls with up to four choices; members can change their vote.
+- `/giveaway` and `/giveaway-end` — create giveaways, collect entries, and draw winners.
+- `/suggestion-setup` and `/suggest` — collect suggestions in a selected channel; moderators can approve or reject.
+- `/verify-setup` — post a verification button that assigns the configured role.
+- `/role-button` — publish self-assignable role buttons.
+- `/rank` and `/leaderboard` — message XP, levels, and server rankings.
+- `/tempvoice-setup` — create temporary voice rooms when members join a configured voice channel; empty rooms are deleted.
+- Community configuration, votes, giveaway entries, and XP are stored in `/app/data/community-data.json` (keep the Railway Volume mounted at `/app/data`).
+
 ### Support tickets
 - Run `/ticket-setup` with a panel channel, staff role, and transcript channel (optional category).
 - Members can open a private ticket from the posted button; the channel is visible to the opener, the configured staff role, and the bot.
