@@ -19,6 +19,13 @@ When a track starts, the bot posts or updates one music player message in the te
 - `/warn`, `/warnings`, `/clearwarns`
 - `/ping`, `/help`, `/activity`
 
+
+### Support tickets
+- Run `/ticket-setup` with a panel channel, staff role, and transcript channel (optional category).
+- Members can open a private ticket from the posted button; the channel is visible to the opener, the configured staff role, and the bot.
+- The ticket owner or support staff can close it. The bot exports up to the latest 1,000 messages as a text transcript to the configured transcript channel and marks the ticket closed.
+- Ticket panel configuration is stored in the panel message, so opening tickets continues to work after bot restarts.
+
 ### AutoMod and server logs
 - Optional Discord invite filtering, message-spam detection (5 messages / 5 seconds), mass-mention filtering, and blocked-word filtering.
 - AutoMod ignores members with Manage Messages or Administrator permission.
