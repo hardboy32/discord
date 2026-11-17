@@ -29,6 +29,11 @@ When a track starts, the bot posts or updates one music player message in the te
 - `/role-button` — publish self-assignable role buttons.
 - `/rank` and `/leaderboard` — message XP, levels, and server rankings.
 - `/tempvoice-setup` — create temporary voice rooms when members join a configured voice channel; empty rooms are deleted.
+
+- `/daily`, `/work`, `/balance`, `/pay`, `/shop`, and `/buy` — persistent coins, daily rewards, work earnings, transfers, and a simple role shop.
+- `/custom-set`, `/custom-run`, and `/custom-delete` — save reusable server responses.
+- `/server-backup` — export role and channel structure as JSON.
+- `/server-restore` — recreate missing roles and channels from that JSON (does not restore messages, member assignments, category nesting, or permission overwrites).
 - Community configuration, votes, giveaway entries, and XP are stored in `/app/data/community-data.json` (keep the Railway Volume mounted at `/app/data`).
 
 ### Support tickets
