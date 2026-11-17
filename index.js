@@ -38,7 +38,10 @@ function logFfmpegVersion() {
   });
 }
 const {
+  ActionRowBuilder,
   ActivityType,
+  ButtonBuilder,
+  ButtonStyle,
   Client,
   EmbedBuilder,
   Events,
@@ -133,6 +136,10 @@ function getQueue(guildId) {
     voiceChannelId: null,
     textChannelId: null,
     starting: false,
+    loopMode: 'off',
+    skipCurrent: false,
+    stopping: false,
+    nowPlayingMessage: null,
     player: createAudioPlayer({
       behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
     }),
@@ -149,8 +156,20 @@ function getQueue(guildId) {
   });
 
   queue.player.on(AudioPlayerStatus.Idle, () => {
+    const finishedTrack = queue.current;
     queue.current = null;
-    setImmediate(() => void playNext(guildId));
+
+    if (finishedTrack && !queue.skipCurrent && !queue.stopping) {
+      if (queue.loopMode === 'track') queue.tracks.unshift(finishedTrack);
+      else if (queue.loopMode === 'queue') queue.tracks.push(finishedTrack);
+    }
+
+    queue.skipCurrent = false;
+    queue.stopping = false;
+    setImmediate(() => {
+      if (queue.tracks.length) void playNext(guildId);
+      else void markPlaybackFinished(queue);
+    });
   });
 
   queue.player.on('error', (error) => {
@@ -325,6 +344,7 @@ async function findSoundCloudTrack(query, requestedBy) {
       title: item.name || item.title || query,
       url: item.permalink || item.permalink_url || item.url,
       duration: item.durationRaw || durationText(item.durationInSec || 0),
+      thumbnail: getTrackThumbnail(item.thumbnail, item.artwork_url, item.thumbnail_url),
       requestedBy,
       searchQuery: query,
       source: 'soundcloud',
@@ -378,6 +398,7 @@ async function findTrack(query, requestedBy) {
           title: video.title || 'YouTube track',
           url: video.url || normalizedUrl,
           duration: video.durationRaw || durationText(video.durationInSec),
+          thumbnail: getTrackThumbnail(video.thumbnails, video.thumbnail),
           requestedBy,
           searchQuery: video.title || normalizedUrl,
           source: 'youtube',
@@ -444,6 +465,7 @@ async function findTrack(query, requestedBy) {
         title: sound.name || sound.title || 'SoundCloud track',
         url: sound.permalink || soundCloudUrl,
         duration: durationText(sound.durationInSec || 0),
+        thumbnail: getTrackThumbnail(sound.artwork_url, sound.thumbnail),
         requestedBy,
         searchQuery: sound.name || sound.title || soundCloudUrl,
         source: 'soundcloud',
@@ -466,6 +488,7 @@ async function findTrack(query, requestedBy) {
     title: item.title || input,
     url: item.url,
     duration: item.durationRaw || 'Unknown',
+    thumbnail: getTrackThumbnail(item.thumbnails, item.thumbnail, item.thumbnail_url),
     requestedBy,
     searchQuery: input,
     source: 'youtube',
@@ -511,6 +534,145 @@ async function connectVoice(guild, channel, queue) {
   return connection;
 }
 
+function getTrackThumbnail(...candidates) {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      const found = getTrackThumbnail(...candidate.map(item => item && (item.url || item.src)));
+      if (found) return found;
+    } else if (candidate && typeof candidate === 'object') {
+      const found = getTrackThumbnail(candidate.url, candidate.src);
+      if (found) return found;
+    } else if (typeof candidate === 'string' && /^https:\/\//i.test(candidate)) {
+      return candidate.replace('-large.', '-t500x500.');
+    }
+  }
+  return null;
+}
+
+function loopModeLabel(mode) {
+  if (mode === 'track') return '🔂 تکرار همین آهنگ';
+  if (mode === 'queue') return '🔁 تکرار کل صف';
+  return '↪️ تکرار خاموش';
+}
+
+function buildMusicPanel(queue, track) {
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('🎵 در حال پخش')
+    .setDescription('[' + track.title.slice(0, 240) + '](' + track.url + ')')
+    .addFields(
+      { name: 'مدت', value: String(track.duration || 'نامشخص'), inline: true },
+      { name: 'درخواست‌کننده', value: String(track.requestedBy || 'نامشخص').slice(0, 80), inline: true },
+      { name: 'حالت تکرار', value: loopModeLabel(queue.loopMode), inline: true }
+    )
+    .setFooter({ text: 'کنترل موزیک از طریق دکمه‌های زیر' });
+  if (track.thumbnail) embed.setImage(track.thumbnail);
+
+  const paused = queue.player.state.status === AudioPlayerStatus.Paused;
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music:pause')
+      .setLabel(paused ? 'ادامه' : 'توقف موقت')
+      .setEmoji(paused ? '▶️' : '⏸️')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('music:skip')
+      .setLabel('بعدی')
+      .setEmoji('⏭️')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('music:stop')
+      .setLabel('توقف')
+      .setEmoji('⏹️')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId('music:loop')
+      .setLabel(queue.loopMode === 'off' ? 'تکرار' : queue.loopMode === 'track' ? 'تکرار آهنگ' : 'تکرار صف')
+      .setEmoji(queue.loopMode === 'queue' ? '🔁' : '🔂')
+      .setStyle(queue.loopMode === 'off' ? ButtonStyle.Secondary : ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('music:queue')
+      .setLabel('صف پخش')
+      .setEmoji('📜')
+      .setStyle(ButtonStyle.Secondary)
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+async function updateMusicPanel(queue, track) {
+  if (!queue.textChannelId || !track) return;
+  const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return;
+  const payload = buildMusicPanel(queue, track);
+  try {
+    if (queue.nowPlayingMessage) {
+      await queue.nowPlayingMessage.edit(payload);
+    } else {
+      queue.nowPlayingMessage = await channel.send(payload);
+    }
+  } catch (error) {
+    console.warn('Could not update music control panel:', error.message || error);
+    queue.nowPlayingMessage = null;
+    const retry = await channel.send(payload).catch(() => null);
+    if (retry) queue.nowPlayingMessage = retry;
+  }
+}
+
+async function markPlaybackFinished(queue) {
+  if (!queue.nowPlayingMessage) return;
+  const embed = new EmbedBuilder()
+    .setColor(0x747F8D)
+    .setTitle('⏹️ پخش به پایان رسید')
+    .setDescription('صف پخش خالی است. برای پخش آهنگ جدید از /play استفاده کن.');
+  await queue.nowPlayingMessage.edit({ embeds: [embed], components: [] }).catch(() => {});
+}
+
+async function handleMusicButton(interaction) {
+  const queue = queues.get(interaction.guildId);
+  if (!queue || !queue.current) {
+    return interaction.reply({ content: 'الان آهنگی در حال پخش نیست.', flags: MessageFlags.Ephemeral });
+  }
+  if (!(await userSharesVoice(interaction, queue))) {
+    return interaction.reply({
+      content: 'برای کنترل موزیک باید داخل همان کانال صوتی ربات باشی.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  switch (interaction.customId) {
+    case 'music:pause':
+      if (queue.player.state.status === AudioPlayerStatus.Paused) queue.player.unpause();
+      else queue.player.pause(true);
+      await updateMusicPanel(queue, queue.current);
+      return interaction.deferUpdate();
+    case 'music:skip':
+      queue.skipCurrent = true;
+      queue.player.stop(true);
+      return interaction.reply({ content: 'آهنگ بعدی پخش می‌شود.', flags: MessageFlags.Ephemeral });
+    case 'music:stop':
+      queue.stopping = true;
+      queue.tracks = [];
+      queue.current = null;
+      queue.player.stop(true);
+      return interaction.reply({ content: 'پخش متوقف و صف خالی شد.', flags: MessageFlags.Ephemeral });
+    case 'music:loop':
+      queue.loopMode = queue.loopMode === 'off' ? 'track' : queue.loopMode === 'track' ? 'queue' : 'off';
+      await updateMusicPanel(queue, queue.current);
+      return interaction.deferUpdate();
+    case 'music:queue': {
+      const lines = [];
+      if (queue.current) lines.push('🎵 اکنون: ' + queue.current.title);
+      queue.tracks.slice(0, 15).forEach((item, index) => lines.push((index + 1) + '. ' + item.title));
+      return interaction.reply({
+        content: lines.length ? lines.join('\n').slice(0, 1900) : 'صف پخش خالی است.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    default:
+      return interaction.reply({ content: 'این دکمه شناخته نشد.', flags: MessageFlags.Ephemeral });
+  }
+}
+
 async function playNext(guildId) {
   const queue = queues.get(guildId);
   if (!queue || queue.starting || queue.current || !queue.tracks.length || !queue.connection) return;
@@ -546,6 +708,7 @@ async function playNext(guildId) {
       console.error('Audio resource stream error:', error.message || error);
     });
     queue.player.play(resource);
+    await updateMusicPanel(queue, track);
     console.log('Audio resource queued:', track.title);
     if (soundCloudProcess) console.log('SoundCloud PCM stream linked to Discord audio resource:', track.title);
   } catch (error) {
@@ -915,6 +1078,17 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton() && interaction.customId.startsWith('music:')) {
+    try {
+      await handleMusicButton(interaction);
+    } catch (error) {
+      console.error('Music control button failed:', error.stack || error);
+      const message = { content: 'کنترل موزیک انجام نشد. دوباره تلاش کن.', flags: MessageFlags.Ephemeral };
+      if (interaction.deferred || interaction.replied) await interaction.followUp(message).catch(() => {});
+      else await interaction.reply(message).catch(() => {});
+    }
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
 
   try {
@@ -1016,6 +1190,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.current) return respond(interaction, 'No track is currently playing.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
+        queue.skipCurrent = true;
         queue.player.stop(true);
         return respond(interaction, 'Skipped to the next track.');
       }
@@ -1038,6 +1213,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue) return respond(interaction, 'The queue is empty.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
+        queue.stopping = true;
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
@@ -1048,6 +1224,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.connection) return respond(interaction, 'The bot is not in a voice channel.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the bot’s voice channel to disconnect it.');
+        queue.stopping = true;
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
