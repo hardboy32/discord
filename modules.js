@@ -12,7 +12,7 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 
-function ticketsEnabled(guildId){try{const fs=require('node:fs');const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';const settings=JSON.parse(fs.readFileSync(file,'utf8'));return settings.community?.tickets!==false}catch{return true}}
+function ticketDashboardConfig(){try{const fs=require('node:fs');const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';return JSON.parse(fs.readFileSync(file,'utf8')).communityConfig?.tickets||{}}catch{return {}}}\nfunction ticketsEnabled(guildId){try{const fs=require('node:fs');const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';const settings=JSON.parse(fs.readFileSync(file,'utf8'));return settings.community?.tickets!==false}catch{return true}}
 function getCoreCommands() {
   return [
     new SlashCommandBuilder()
@@ -43,7 +43,7 @@ async function handleCoreInteraction(interaction) {
       .setDescription('Need help? Press the button below to open a private support ticket.')
       .setFooter({ text: 'ticket-config|' + staffRole.id + '|' + transcriptChannel.id + '|' + (category ? category.id : '') });
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')
+      new ButtonBuilder().setCustomId('ticket:open').setLabel(cfg.buttonLabel || 'Open a ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')
     );
     await panelChannel.send({ embeds: [embed], components: [row] });
     await interaction.reply({ content: 'Ticket panel created in ' + panelChannel.toString() + '. Staff: ' + staffRole.toString() + '. Transcripts: ' + transcriptChannel.toString() + (category ? ' Category: ' + category.name : ''), flags: MessageFlags.Ephemeral });
