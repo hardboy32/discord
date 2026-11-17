@@ -12,6 +12,7 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 
+function ticketsEnabled(guildId){try{const fs=require('node:fs');const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';const settings=JSON.parse(fs.readFileSync(file,'utf8'));return settings.community?.tickets!==false}catch{return true}}
 function getCoreCommands() {
   return [
     new SlashCommandBuilder()
@@ -27,6 +28,7 @@ function getCoreCommands() {
 
 async function handleCoreInteraction(interaction) {
   if (interaction.isChatInputCommand() && interaction.commandName === 'ticket-setup') {
+    if (!ticketsEnabled(interaction.guildId)) { await interaction.reply({ content: 'Tickets are disabled in the dashboard.', flags: MessageFlags.Ephemeral }); return true; }
     if (!interaction.guild || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
       await interaction.reply({ content: 'You need Manage Server permission to set up tickets.', flags: MessageFlags.Ephemeral });
       return true;
@@ -49,6 +51,7 @@ async function handleCoreInteraction(interaction) {
   }
 
   if (!interaction.isButton() || !interaction.customId.startsWith('ticket:')) return false;
+  if (!ticketsEnabled(interaction.guildId)) { await interaction.reply({ content: 'Tickets are disabled in the dashboard.', flags: MessageFlags.Ephemeral }); return true; }
   if (!interaction.guild) {
     await interaction.reply({ content: 'Tickets can only be used inside a server.', flags: MessageFlags.Ephemeral });
     return true;
