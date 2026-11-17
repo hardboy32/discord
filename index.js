@@ -90,7 +90,7 @@ async function ensureYtDlpReady() {
       if (YOUTUBE_COOKIES_B64) {
         const cookieText = Buffer.from(YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
         const cookieLines = cookieText.split(/\r?\n/).filter(line => {
-          if (!line || line.startsWith('#')) return false;
+          if (!line || (line.startsWith('#') && !line.startsWith('#HttpOnly_'))) return false;
           const fields = line.split('\t');
           return fields.length >= 7 &&
             /^(?:#HttpOnly_)?(?:\.?youtube\.com|\.?google\.com|\.?googleusercontent\.com)$/i.test(fields[0]);
