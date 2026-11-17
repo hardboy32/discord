@@ -125,8 +125,14 @@ async function ensureBgutilReady() {
   return bgutilAvailable;
 }
 
-function addYoutubeExtractorOptions(args, withCookies = true) {
-  if (withCookies && ytDlpCookiesText) args.push('--cookies', ytDlpCookiePathForCurrentProcess);
+function addYoutubeExtractorOptions(args, cookiePath, useBgutil) {
+  if (cookiePath) args.push('--cookies', cookiePath);
+  if (useBgutil) {
+    args.push('--plugin-dirs', path.join(BGUTIL_ROOT, 'plugin'));
+    args.push('--js-runtimes', 'node');
+    args.push('--extractor-args', 'youtubepot-bgutilscript:server_home=' + path.join(BGUTIL_ROOT, 'server'));
+    args.push('--extractor-args', 'youtube:player-client=mweb,tv,web_safari');
+  }
 }
 
 async function ensureYtDlpReady() {
