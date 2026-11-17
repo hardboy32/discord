@@ -240,8 +240,13 @@ function startDashboard(client) {
         }
         if (req.method === 'PUT' && url.pathname === '/api/settings') {
           const body = await readBody(req);
-          const channelIds = new Set((await liveGuild.channels.fetch()).filter(c => c && c.isTextBased()).map(c => c.id));
+          const liveChannels = await liveGuild.channels.fetch();
+          const liveRoles = await liveGuild.roles.fetch();
+          const channelIds = new Set(liveChannels.filter(c => c && c.guild).map(c => c.id));
+          const roleIds = new Set(liveRoles.map(r => r.id));
           const validChannel = id => !id || channelIds.has(id);
+          const validRole = id => !id || roleIds.has(id);
+          if (body.communityConfig) { for (const config of Object.values(body.communityConfig)) { if (!config || typeof config !== 'object') continue; for (const [key, value] of Object.entries(config)) { if (value === '' || value == null) continue; if (['panelChannelId','transcriptChannelId','channelId','announceChannelId','creatorChannelId','defaultChannelId','logChannelId','categoryId'].includes(key) && !validChannel(value)) return send(res, 400, { error: 'Invalid channel or category selection: ' + key }); if (['staffRoleId','reviewerRoleId','requiredRoleId','roleId','unverifiedRoleId'].includes(key) && !validRole(value)) return send(res, 400, { error: 'Invalid role selection: ' + key }); } } }
           if (!validChannel(body.welcome && body.welcome.channelId) || !validChannel(body.goodbye && body.goodbye.channelId) || !validChannel(body.moderation && body.moderation.logChannelId)) return send(res, 400, { error: 'Invalid channel' });
           settings = merge(settings, body);
           if (settings.welcome.type === 'image' && !settings.welcome.imagePath) return send(res, 400, { error: 'Upload a welcome image before selecting image mode.' });
