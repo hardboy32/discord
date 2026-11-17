@@ -95,11 +95,71 @@ function allowed(user) {
 function html() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HardBoy • Server Dashboard</title><style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#141d31;--line:#293752;--muted:#98a8c4;--text:#edf2ff;--accent:#7887ff;--green:#5bd6a0}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0,#1b2850 0,transparent 42%),var(--bg);color:var(--text);font:15px Inter,system-ui,Segoe UI,sans-serif}
-button,input,select,textarea{font:inherit}button{cursor:pointer;border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px;font-weight:700}button.secondary{background:#273653}button.danger{background:#a83e57}.hidden{display:none!important}
-.shell{display:grid;grid-template-columns:245px 1fr;min-height:100vh}.side{background:#0c1426;border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;height:100vh}.brand{font-size:19px;font-weight:850;margin:4px 10px 28px}.brand span{color:var(--accent)}.nav{display:grid;gap:7px}.nav button{text-align:left;background:transparent;color:#aebbd2;font-weight:600}.nav button.active,.nav button:hover{background:#202c48;color:white}.sidefoot{position:absolute;bottom:22px;left:24px;color:var(--muted);font-size:12px}
-main{padding:32px;max-width:1300px;width:100%;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:25px}.eyebrow{color:#91a3c7;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;font-weight:800}h1{font-size:29px;margin:5px 0}h2{font-size:19px;margin:0 0 16px}.muted{color:var(--muted)}.panel{background:linear-gradient(145deg,#17233b,#121b2e);border:1px solid var(--line);border-radius:17px;padding:22px;margin-bottom:18px;box-shadow:0 14px 35px #0002}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.stat{padding:18px;border-radius:14px;background:#101a2e;border:1px solid #263550}.stat b{display:block;font-size:22px;margin-top:7px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.field{display:block;margin:14px 0;color:#c9d5ea;font-size:13px;font-weight:650}.field input:not([type=checkbox]),.field select,.field textarea{display:block;width:100%;margin-top:7px;background:#0b1426;color:white;border:1px solid #394b6b;border-radius:10px;padding:12px;outline:none}.field textarea{min-height:100px;resize:vertical}.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}.check{display:flex;align-items:center;gap:10px;margin:13px 0;color:#cbd6e9}.check input{width:17px;height:17px;accent-color:var(--accent)}.hint{font-size:12px;color:var(--muted);line-height:1.6}.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}#status{color:var(--green);font-size:13px}.preview{background:#0b1426;border:1px dashed #425578;border-radius:13px;padding:16px;min-height:90px}.preview img{max-width:100%;max-height:230px;object-fit:contain;border-radius:9px;display:block;margin-top:10px}.command{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:15px 0;border-bottom:1px solid #293752}.command:last-child{border:0}.command code{color:#aebaff;font-weight:800}.tag{font-size:11px;padding:4px 8px;border-radius:20px;background:#273653;color:#cbd8f2;white-space:nowrap}.command p{margin:5px 0 0;color:var(--muted);font-size:13px}.formrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}.login{max-width:500px;margin:12vh auto;padding:30px}
-@media(max-width:800px){.shell{grid-template-columns:1fr}.side{height:auto;position:relative;padding:14px}.brand{margin:4px 8px 12px}.nav{display:flex;overflow:auto}.nav button{white-space:nowrap;padding:9px}.sidefoot{display:none}main{padding:18px}.stats,.grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+*{box-sizing:border-box}
+html,body{min-height:100%;width:100%}
+body{margin:0;overflow-x:hidden;background:radial-gradient(ellipse at 15% 0,#1b2850 0,transparent 42%),var(--bg);color:var(--text);font:15px Inter,system-ui,Segoe UI,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer;border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px;font-weight:700}
+button.secondary{background:#273653}
+button.danger{background:#a83e57}
+.hidden{display:none!important}
+.shell{display:grid;grid-template-columns:245px minmax(0,1fr);min-height:100vh;align-items:stretch}
+.side{min-width:0;background:#0c1426;border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.brand{font-size:19px;font-weight:850;margin:4px 10px 28px}
+.brand span{color:var(--accent)}
+.nav{display:grid;gap:7px}
+.nav button{text-align:left;background:transparent;color:#aebbd2;font-weight:600}
+.nav button.active,.nav button:hover{background:#202c48;color:white}
+.sidefoot{position:absolute;bottom:22px;left:24px;color:var(--muted);font-size:12px}
+main{min-width:0;align-self:stretch;padding:30px;max-width:1300px;width:100%;margin:0 auto}
+.top{min-height:72px;display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 25px}
+.top>div{min-width:0}
+.eyebrow{color:#91a3c7;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;font-weight:800}
+h1{font-size:29px;margin:5px 0}
+h2{font-size:19px;margin:0 0 16px}
+.muted{color:var(--muted)}
+.page{width:100%;min-width:0}
+.panel{min-width:0;width:100%;background:linear-gradient(145deg,#17233b,#121b2e);border:1px solid var(--line);border-radius:17px;padding:22px;margin:0 0 18px;box-shadow:0 14px 35px #0002}
+.page>.panel:last-child{margin-bottom:0}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch}
+.stat{min-width:0;padding:18px;border-radius:14px;background:#101a2e;border:1px solid #263550}
+.stat b{display:block;font-size:22px;margin-top:7px;overflow-wrap:anywhere}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
+.grid>*{min-width:0}
+#communityConfigGrid>.panel{height:100%;margin:0}
+.field{display:block;min-width:0;margin:14px 0;color:#c9d5ea;font-size:13px;font-weight:650}
+.field input:not([type=checkbox]),.field select,.field textarea{display:block;width:100%;max-width:100%;min-width:0;margin-top:7px;background:#0b1426;color:white;border:1px solid #394b6b;border-radius:10px;padding:12px;outline:none}
+.field textarea{min-height:100px;resize:vertical}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}
+.check{display:flex;align-items:flex-start;gap:10px;margin:13px 0;color:#cbd6e9;line-height:1.5}
+.check input{width:17px;height:17px;flex:0 0 17px;margin:2px 0 0;accent-color:var(--accent)}
+.hint{font-size:12px;color:var(--muted);line-height:1.6}
+.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;min-height:40px}
+#status{color:var(--green);font-size:13px}
+.preview{width:100%;min-width:0;background:#0b1426;border:1px dashed #425578;border-radius:13px;padding:16px;min-height:90px;overflow-wrap:anywhere}
+.preview img{max-width:100%;max-height:230px;object-fit:contain;border-radius:9px;display:block;margin-top:10px}
+.command{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:15px 0;border-bottom:1px solid #293752}
+.command:last-child{border:0}
+.command code{color:#aebaff;font-weight:800}
+.tag{display:inline-flex;align-items:center;justify-content:center;font-size:11px;padding:4px 8px;border-radius:20px;background:#273653;color:#cbd8f2;white-space:nowrap}
+.command p{margin:5px 0 0;color:var(--muted);font-size:13px}
+.formrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.login{max-width:500px;margin:12vh auto;padding:30px}
+@media(max-width:1050px){
+  .shell{grid-template-columns:220px minmax(0,1fr)}
+  main{padding:24px}
+}
+@media(max-width:800px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .side{position:relative;top:auto;align-self:auto;height:auto;min-height:0;overflow:visible;padding:14px}
+  .brand{margin:4px 8px 12px}
+  .nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .nav button{flex:0 0 auto;white-space:nowrap;padding:9px}
+  .sidefoot{display:none}
+  main{width:100%;max-width:none;margin:0;padding:18px}
+  .stats,.grid,.formrow{grid-template-columns:minmax(0,1fr)}
+  .top{align-items:flex-start;flex-direction:column;min-height:0}
+}
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
 <button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="modules">⚙ Modules</button><button data-page="community">✧ Community</button><button data-page="backup">⬇ Data backup</button>
