@@ -240,19 +240,30 @@ async function resolveSoundCloudPlaylistUrl(trackInfo, trackTitle) {
   if (!ffmpegPath) throw new Error('ffmpeg-static binary is unavailable on this host.');
 
   const formats = Array.isArray(trackInfo && trackInfo.formats) ? trackInfo.formats : [];
-  const hlsFormats = formats.filter(item => item && item.format && item.format.protocol === 'hls');
-  const aacFormats = hlsFormats.filter(item =>
-    /aac/i.test(String(item.preset || '')) ||
-    /aac/i.test(String(item.format.mime_type || ''))
+  // SoundCloud tracks do not always expose HLS. Some provide only progressive
+  // MP3/AAC streams; those are valid audio sources and must not be discarded.
+  const supportedFormats = formats.filter(item =>
+    item && item.url && item.format &&
+    ['hls', 'progressive'].includes(item.format.protocol)
   );
-  const candidates = (aacFormats.length ? aacFormats : hlsFormats).slice().sort((a, b) => {
+  const isAac = item =>
+    /aac/i.test(String(item.preset || '')) ||
+    /aac/i.test(String(item.format.mime_type || ''));
+  const hlsFormats = supportedFormats.filter(item => item.format.protocol === 'hls');
+  const progressiveFormats = supportedFormats.filter(item => item.format.protocol === 'progressive');
+  const preferredFormats = hlsFormats.length
+    ? (hlsFormats.some(isAac) ? hlsFormats.filter(isAac) : hlsFormats)
+    : (progressiveFormats.some(isAac) ? progressiveFormats.filter(isAac) : progressiveFormats);
+  const candidates = preferredFormats.slice().sort((a, b) => {
     const bitrate = item => {
       const match = String(item.preset || '').match(/[0-9]+k/i);
       return match ? Number(match[0].slice(0, -1)) : 0;
     };
     return bitrate(b) - bitrate(a);
   });
-  if (!candidates.length) throw new Error('SoundCloud did not provide an HLS audio format.');
+  if (!candidates.length) {
+    throw new Error('SoundCloud did not provide a supported HLS or progressive audio format.');
+  }
 
   let lastError;
   for (const format of candidates) {
@@ -289,6 +300,11 @@ async function createSoundCloudPcmStream(trackInfo, trackTitle) {
     '-nostdin',
     '-user_agent', 'Mozilla/5.0 DiscordMusicBot/1.0',
     '-headers', 'Origin: https://soundcloud.com\r\nReferer: https://soundcloud.com/\r\n',
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-rw_timeout', '15000000',
+    '-threads', '1',
     '-i', playlistUrl,
     '-vn',
     '-acodec', 'pcm_s16le',
