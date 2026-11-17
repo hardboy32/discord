@@ -124,8 +124,13 @@ async function getYoutubeInfo(queryOrUrl) {
         reject(new Error('YouTube extraction failed: ' + (safeError || 'yt-dlp exited with code ' + code)));
         return;
       }
-      try { resolve(JSON.parse(stdout)); }
-      catch { reject(new Error('yt-dlp returned invalid video information.')); }
+      try {
+        const parsed = JSON.parse(stdout);
+        const video = Array.isArray(parsed.entries) ? parsed.entries.find(item => item && item.webpage_url) : null;
+        resolve(video || parsed);
+      } catch {
+        reject(new Error('yt-dlp returned invalid video information.'));
+      }
     });
   });
 }
