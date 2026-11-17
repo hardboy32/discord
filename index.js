@@ -63,6 +63,94 @@ const {
   joinVoiceChannel,
 } = require('@discordjs/voice');
 const play = require('@iamtraction/play-dl');
+const YOUTUBE_COOKIES_B64 = (process.env.YOUTUBE_COOKIES_B64 || '').trim();
+const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
+const YTDLP_COOKIES_PATH = path.join('/tmp', 'youtube-cookies.txt');
+let ytDlpInitPromise = null;
+let ytDlpCookiesPath = null;
+
+async function ensureYtDlpReady() {
+  if (!ytDlpInitPromise) {
+    ytDlpInitPromise = (async () => {
+      if (!fs.existsSync(YTDLP_PATH)) {
+        console.log('Downloading the official yt-dlp standalone binary...');
+        const asset = process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+        const response = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/' + asset, {
+          signal: AbortSignal.timeout(120000), redirect: 'follow',
+        });
+        if (!response.ok) throw new Error('Could not download yt-dlp (HTTP ' + response.status + ').');
+        const binary = Buffer.from(await response.arrayBuffer());
+        if (binary.length < 1000000) throw new Error('Downloaded yt-dlp binary looks incomplete.');
+        await fs.promises.writeFile(YTDLP_PATH, binary, { mode: 0o700 });
+        await fs.promises.chmod(YTDLP_PATH, 0o700);
+      }
+      if (YOUTUBE_COOKIES_B64) {
+        const cookieText = Buffer.from(YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
+        if (!cookieText.includes('# Netscape HTTP Cookie File') &&
+            !cookieText.includes('# HTTP Cookie File') &&
+            !cookieText.split(/\r?\n/).some(line => line.startsWith('.youtube.com') || line.startsWith('#HttpOnly_.youtube.com'))) {
+          throw new Error('YOUTUBE_COOKIES_B64 must contain a Netscape-format YouTube cookies file encoded as Base64.');
+        }
+        await fs.promises.writeFile(YTDLP_COOKIES_PATH, cookieText, { mode: 0o600 });
+        await fs.promises.chmod(YTDLP_COOKIES_PATH, 0o600);
+        ytDlpCookiesPath = YTDLP_COOKIES_PATH;
+        console.log('YouTube cookies loaded from Railway secret.');
+      } else {
+        console.log('YouTube cookies are not configured; yt-dlp will try without account cookies.');
+      }
+      console.log('yt-dlp is ready.');
+    })().catch(error => { ytDlpInitPromise = null; throw error; });
+  }
+  await ytDlpInitPromise;
+}
+
+async function getYoutubeInfo(queryOrUrl) {
+  await ensureYtDlpReady();
+  const args = ['--dump-single-json', '--no-warnings', '--no-playlist', '--skip-download'];
+  if (ytDlpCookiesPath) args.push('--cookies', ytDlpCookiesPath);
+  args.push(queryOrUrl);
+  return new Promise((resolve, reject) => {
+    const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 45000);
+    child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-3000); });
+    child.on('error', error => { clearTimeout(timeout); reject(new Error('Could not start yt-dlp: ' + error.message)); });
+    child.on('close', code => {
+      clearTimeout(timeout);
+      if (code !== 0 || !stdout.trim()) {
+        const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
+        reject(new Error('YouTube extraction failed: ' + (safeError || 'yt-dlp exited with code ' + code)));
+        return;
+      }
+      try { resolve(JSON.parse(stdout)); }
+      catch { reject(new Error('yt-dlp returned invalid video information.')); }
+    });
+  });
+}
+
+async function createYoutubeStream(url) {
+  await ensureYtDlpReady();
+  const args = ['--no-warnings', '--no-progress', '--format', 'bestaudio/best', '--output', '-', '--no-playlist'];
+  if (ytDlpCookiesPath) args.push('--cookies', ytDlpCookiesPath);
+  args.push(url);
+  const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-2000); });
+  child.on('error', error => console.error('yt-dlp stream process error:', error.message || error));
+  child.on('close', code => {
+    if (code !== 0) {
+      const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
+      console.error('yt-dlp stream ended with code ' + code + ':', safeError || 'no diagnostic output');
+    }
+  });
+  child.stdout.on('close', () => {
+    if (!child.killed && child.exitCode === null) child.kill('SIGTERM');
+  });
+  return child.stdout;
+}
+
 
 const TOKEN = (process.env.DISCORD_TOKEN || '').trim();
 const CLIENT_ID = (process.env.DISCORD_CLIENT_ID || '').trim();
@@ -407,14 +495,13 @@ async function findTrack(query, requestedBy) {
         ? 'https://www.youtube.com/watch?v=' + videoId
         : input;
 
-      if (play.yt_validate(normalizedUrl) === 'video') {
-        const info = await play.video_basic_info(normalizedUrl);
-        const video = info.video_details;
+      if (/^[A-Za-z0-9_-]{11}$/.test(videoId) || play.yt_validate(normalizedUrl) === 'video') {
+        const video = await getYoutubeInfo(normalizedUrl);
         return {
           title: video.title || 'YouTube track',
-          url: video.url || normalizedUrl,
-          duration: video.durationRaw || durationText(video.durationInSec),
-          thumbnail: getTrackThumbnail(video.thumbnails, video.thumbnail),
+          url: video.webpage_url || normalizedUrl,
+          duration: durationText(video.duration || 0),
+          thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
           requestedBy,
           searchQuery: video.title || normalizedUrl,
           source: 'youtube',
@@ -494,17 +581,15 @@ async function findTrack(query, requestedBy) {
     throw new Error('Unsupported link. Provide a YouTube video or SoundCloud track URL.');
   }
 
-  const results = await play.search(input, { limit: 1 });
-  const item = Array.isArray(results) ? results[0] : null;
-  if (!item || !item.url) {
+  const video = await getYoutubeInfo('ytsearch1:' + input);
+  if (!video || !video.webpage_url) {
     throw new Error('No track found. Try a more specific title or provide a YouTube or SoundCloud URL.');
   }
-
   return {
-    title: item.title || input,
-    url: item.url,
-    duration: item.durationRaw || 'Unknown',
-    thumbnail: getTrackThumbnail(item.thumbnails, item.thumbnail, item.thumbnail_url),
+    title: video.title || input,
+    url: video.webpage_url,
+    duration: durationText(video.duration || 0),
+    thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
     requestedBy,
     searchQuery: input,
     source: 'youtube',
@@ -713,11 +798,12 @@ async function playNext(guildId) {
       });
       track.ffmpegProcess = soundCloudProcess;
     } else {
-      const result = await play.stream(track.url);
-      resource = createAudioResource(result.stream, {
+      const youtubeStream = await createYoutubeStream(track.url);
+      resource = createAudioResource(youtubeStream, {
         metadata: track,
-        inputType: result.type || StreamType.Arbitrary,
+        inputType: StreamType.Arbitrary,
       });
+      track.youtubeStream = youtubeStream;
     }
 
     resource.playStream.on('error', error => {
