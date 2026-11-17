@@ -3,8 +3,6 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { promisify } = require('node:util');
-const execFileAsync = promisify(require('node:child_process').execFile);
 let bundledFfmpegPath = null;
 try {
   bundledFfmpegPath = require('ffmpeg-static');
