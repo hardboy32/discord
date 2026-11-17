@@ -561,8 +561,8 @@ function buildMusicPanel(queue, track) {
     .setTitle('🎵 Now Playing')
     .setDescription('[' + track.title.slice(0, 240) + '](' + track.url + ')')
     .addFields(
-      { name: 'Duration', value: String(track.duration || 'نامشخص'), inline: true },
-      { name: 'Requested by', value: String(track.requestedBy || 'نامشخص').slice(0, 80), inline: true },
+      { name: 'Duration', value: String(track.duration || 'Unknown'), inline: true },
+      { name: 'Requested by', value: String(track.requestedBy || 'Unknown').slice(0, 80), inline: true },
       { name: 'Loop Mode', value: loopModeLabel(queue.loopMode), inline: true }
     )
     .setFooter({ text: 'Use the buttons below to control playback' });
@@ -587,7 +587,7 @@ function buildMusicPanel(queue, track) {
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId('music:loop')
-      .setLabel(queue.loopMode === 'off' ? 'تکرار' : queue.loopMode === 'track' ? 'Repeat Track' : 'Repeat Queue')
+      .setLabel(queue.loopMode === 'off' ? 'Loop' : queue.loopMode === 'track' ? 'Repeat Track' : 'Repeat Queue')
       .setEmoji(queue.loopMode === 'queue' ? '🔁' : '🔂')
       .setStyle(queue.loopMode === 'off' ? ButtonStyle.Secondary : ButtonStyle.Success),
     new ButtonBuilder()
@@ -623,7 +623,7 @@ async function markPlaybackFinished(queue) {
   const embed = new EmbedBuilder()
     .setColor(0x747F8D)
     .setTitle('⏹️ Playback Finished')
-    .setDescription('Queue خالی است. برای پخش آهنگ جدید از /play استفاده کن.');
+    .setDescription('The queue is empty. Use /play to start another track.');
   await queue.nowPlayingMessage.edit({ embeds: [embed], components: [] }).catch(() => {});
 }
 
@@ -648,13 +648,13 @@ async function handleMusicButton(interaction) {
     case 'music:skip':
       queue.skipCurrent = true;
       queue.player.stop(true);
-      return interaction.reply({ content: 'آهنگ Skip پخش می‌شود.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Skipping to the next track.', flags: MessageFlags.Ephemeral });
     case 'music:stop':
       queue.stopping = true;
       queue.tracks = [];
       queue.current = null;
       queue.player.stop(true);
-      return interaction.reply({ content: 'پخش مStop و صف خالی شد.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Playback stopped and the queue was cleared.', flags: MessageFlags.Ephemeral });
     case 'music:loop':
       queue.loopMode = queue.loopMode === 'off' ? 'track' : queue.loopMode === 'track' ? 'queue' : 'off';
       await updateMusicPanel(queue, queue.current);
@@ -664,7 +664,7 @@ async function handleMusicButton(interaction) {
       if (queue.current) lines.push('🎵 Now: ' + queue.current.title);
       queue.tracks.slice(0, 15).forEach((item, index) => lines.push((index + 1) + '. ' + item.title));
       return interaction.reply({
-        content: lines.length ? lines.join('\n').slice(0, 1900) : 'Queue خالی است.',
+        content: lines.length ? lines.join('\n').slice(0, 1900) : 'The queue is empty.',
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -1083,7 +1083,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleMusicButton(interaction);
     } catch (error) {
       console.error('Music control button failed:', error.stack || error);
-      const message = { content: 'کنترل موزیک انجام نشد. دوباره تلاش کن.', flags: MessageFlags.Ephemeral };
+      const message = { content: 'Music control failed. Please try again.', flags: MessageFlags.Ephemeral };
       if (interaction.deferred || interaction.replied) await interaction.followUp(message).catch(() => {});
       else await interaction.reply(message).catch(() => {});
     }
