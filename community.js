@@ -21,6 +21,7 @@ process.once('SIGTERM',()=>{flushXpSave();process.exit(0)});
 process.once('SIGINT',()=>{flushXpSave();process.exit(0)});
 const eph=content=>({content,flags:MessageFlags.Ephemeral});
 const DASHBOARD_SETTINGS_FILE=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';
+const DASHBOARD_GUILD_ID=(process.env.DASHBOARD_GUILD_ID||'686002315148394502').trim();
 let dashboardSettingsCache={};
 let dashboardSettingsCheckedAt=0;
 function readDashboardSettings(){
@@ -31,8 +32,14 @@ function readDashboardSettings(){
   catch{dashboardSettingsCache={}}
   return dashboardSettingsCache;
 }
-function dashboardConfig(guildId,key){return readDashboardSettings().communityConfig?.[key]||{}}
-function featureEnabled(guildId,key){return readDashboardSettings().community?.[key]!==false}
+function dashboardConfig(guildId,key){
+  if(guildId!==DASHBOARD_GUILD_ID)return {};
+  return readDashboardSettings().communityConfig?.[key]||{};
+}
+function featureEnabled(guildId,key){
+  if(guildId!==DASHBOARD_GUILD_ID)return true;
+  return readDashboardSettings().community?.[key]!==false;
+}
 const commandFeatures={poll:'polls',giveaway:'giveaways','giveaway-end':'giveaways','suggest':'suggestions','suggestion-setup':'suggestions','verify-setup':'verification','role-button':'roleButtons',rank:'levels',leaderboard:'levels',daily:'economy',work:'economy',balance:'economy',pay:'economy',shop:'economy',buy:'economy','tempvoice-setup':'tempVoice',invites:'invites','invite-leaderboard':'invites','stream-alert-setup':'streamAlerts','custom-set':'customCommands','custom-run':'customCommands','custom-delete':'customCommands','server-backup':'backup','server-restore':'backup'};
 const isAdmin=i=>i.memberPermissions?.has(PermissionFlagsBits.ManageGuild)||i.memberPermissions?.has(PermissionFlagsBits.Administrator);
 function getCommunityCommands(){return [
