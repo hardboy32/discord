@@ -1220,7 +1220,8 @@ function buildMusicPanel(queue, track) {
     )
     .setFooter({ text: 'Use the buttons below to control playback' });
   const panelImage = track.thumbnail || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
-  embed.setImage(panelImage).setThumbnail(panelImage);
+  embed.setImage(panelImage);
+  if (track.thumbnail) embed.setThumbnail(track.thumbnail);
   console.log('Music panel artwork:', track.thumbnail ? 'track thumbnail' : 'fallback GIF', panelImage);
 
   const paused = queue.player.state.status === AudioPlayerStatus.Paused;
@@ -1268,7 +1269,7 @@ async function updateMusicPanel(queue, track) {
   } else {
     try {
       const fallbackAttachment = await createFallbackGifAttachment();
-      payload.embeds[0].setImage('attachment://music-fallback.gif').setThumbnail('attachment://music-fallback.gif');
+      payload.embeds[0].setImage('attachment://music-fallback.gif').setThumbnail(null);
       payload.files = [fallbackAttachment];
       console.log('Music panel artwork:', forceUploadedArtwork ? 'forced uploaded artwork' : 'fallback for missing track cover');
     } catch (error) {
@@ -1276,7 +1277,7 @@ async function updateMusicPanel(queue, track) {
       if (track.thumbnail && !forceUploadedArtwork) {
         payload.embeds[0].setImage(track.thumbnail).setThumbnail(track.thumbnail);
       } else {
-        payload.embeds[0].setImage(MUSIC_FALLBACK_GIF_URL).setThumbnail(MUSIC_FALLBACK_GIF_URL);
+        payload.embeds[0].setImage(MUSIC_FALLBACK_GIF_URL).setThumbnail(null);
       }
     }
   }
