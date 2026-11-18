@@ -12,32 +12,6 @@ const LAVALINK_JAR = path.join(__dirname, 'Lavalink.jar');
 const CIPHER_BIN = path.join(__dirname, 'yt-cipher');
 const STARTUP_TIMEOUT_MS = 180000;
 
-// Forward only warnings/errors from child services; suppress routine INFO output.
-function forwardImportantLogs(child, label) {
-  const buffers = { stdout: '', stderr: '' };
-  for (const streamName of ['stdout', 'stderr']) {
-    const stream = child[streamName];
-    if (!stream) continue;
-    stream.setEncoding('utf8');
-    stream.on('data', chunk => {
-      buffers[streamName] += chunk;
-      const lines = buffers[streamName].split(/\r?\n/);
-      buffers[streamName] = lines.pop() || '';
-      for (const line of lines) {
-        if (/(WARN|WARNING|ERROR|FATAL|SEVERE|error|failed|exception)/i.test(line)) {
-          console.error('[' + label + '] ' + line);
-        }
-      }
-    });
-    stream.on('end', () => {
-      const line = buffers[streamName].trim();
-      if (line && /(WARN|WARNING|ERROR|FATAL|SEVERE|error|failed|exception)/i.test(line)) {
-        console.error('[' + label + '] ' + line);
-      }
-    });
-  }
-}
-
 if (!process.env.LAVALINK_PASSWORD) {
   process.env.LAVALINK_PASSWORD = crypto.randomBytes(32).toString('hex');
 }
