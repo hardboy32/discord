@@ -25,13 +25,16 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
+    remoteCipher:
+      url: "https://cipher.lavalink-harmonix.me/"
+      userAgent: "hardboy-discord-lavalink"
     clients:
-      - MUSIC
-      - ANDROID_VR
+      - WEBEMBEDDED
+      - TVHTML5_SIMPLY
       - WEB
       - MWEB
-      - TVHTML5_SIMPLY
-      - WEBEMBEDDED
+      - MUSIC
+      - ANDROID_VR
 
 logging:
   level:
