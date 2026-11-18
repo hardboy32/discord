@@ -1260,17 +1260,24 @@ async function updateMusicPanel(queue, track) {
   if (!channel || !channel.isTextBased()) return;
 
   const payload = buildMusicPanel(queue, track);
-  if (track.thumbnail) {
+  const musicSettings = getDashboardSettings(channel.guildId).music || {};
+  const forceUploadedArtwork = musicSettings.artworkMode === 'force';
+  if (track.thumbnail && !forceUploadedArtwork) {
     payload.embeds[0].setImage(track.thumbnail).setThumbnail(track.thumbnail);
+    console.log('Music panel artwork: using track cover');
   } else {
     try {
       const fallbackAttachment = await createFallbackGifAttachment();
       payload.embeds[0].setImage('attachment://music-fallback.gif').setThumbnail('attachment://music-fallback.gif');
       payload.files = [fallbackAttachment];
-      console.log('Music panel artwork: uploaded fallback GIF attachment from', MUSIC_FALLBACK_GIF_URL);
+      console.log('Music panel artwork:', forceUploadedArtwork ? 'forced uploaded artwork' : 'fallback for missing track cover');
     } catch (error) {
       console.warn('Could not upload fallback GIF; using the remote image URL:', error.message || error);
-      payload.embeds[0].setImage(MUSIC_FALLBACK_GIF_URL).setThumbnail(MUSIC_FALLBACK_GIF_URL);
+      if (track.thumbnail && !forceUploadedArtwork) {
+        payload.embeds[0].setImage(track.thumbnail).setThumbnail(track.thumbnail);
+      } else {
+        payload.embeds[0].setImage(MUSIC_FALLBACK_GIF_URL).setThumbnail(MUSIC_FALLBACK_GIF_URL);
+      }
     }
   }
 
