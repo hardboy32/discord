@@ -291,8 +291,8 @@ async function getYtDlpMediaInfo(url) {
           ? info.formats.find(item => item && item.url && item.vcodec === 'none' && item.acodec && item.acodec !== 'none')
             || info.formats.find(item => item && item.url && item.acodec && item.acodec !== 'none')
           : null;
-        const mediaUrl = (format && format.url) || info.url;
-        const headers = (format && format.http_headers) || info.http_headers || {};
+        const mediaUrl = info.url || (format && format.url);
+        const headers = info.http_headers || (format && format.http_headers) || {};
         if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) throw new Error('yt-dlp did not return a direct media URL.');
         const headerText = Object.entries(headers)
           .filter(([name, value]) => /^[A-Za-z0-9-]+$/.test(name) && value != null && !/[\r\n]/.test(String(value)))
