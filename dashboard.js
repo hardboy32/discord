@@ -244,7 +244,7 @@ h2{font-size:19px;margin:0 0 16px}
 <button id="playerSeek">Seek / play segment</button>
 <button id="playerStop" class="danger">■ Stop</button>
 </div>
-<input id="playerProgressSlider" type="range" min="0" max="100" value="0" style="width:100%;margin-top:14px"><div class="muted" id="playerProgress" style="margin-top:6px">00:00 / 00:00</div>
+<input id="playerProgressSlider" type="range" min="0" max="100" step="0.01" value="0" style="width:100%;margin-top:14px;cursor:pointer"><div class="muted" id="playerProgress" style="margin-top:6px">00:00 / 00:00</div>
 <div class="hint">Set a start position and optional end position to play just one selected part of the current track. You can also jump backward or forward by 10 seconds.</div>
 <span id="playerControlStatus" role="status" aria-live="polite"></span>
 </div>
@@ -332,13 +332,15 @@ function formatPlayerTime(seconds){const n=Math.max(0,Math.floor(Number(seconds)
 let dashboardPlayerSnapshot=null;
 let dashboardPlayerScrubbing=false;
 function renderDashboardPlayerProgress(previewPosition=null){if(!dashboardPlayerSnapshot)return;const state=dashboardPlayerSnapshot;const elapsed=state.paused?0:(Date.now()-state.receivedAt)/1000;const position=previewPosition===null?Math.min(Number(state.duration)||Infinity,(Number(state.position)||0)+elapsed):previewPosition;const slider=$('playerProgressSlider');if(!dashboardPlayerScrubbing&&previewPosition===null)slider.value=Math.min(position,Number(slider.max));$('playerProgress').textContent=formatPlayerTime(position)+' / '+formatPlayerTime(state.duration)+(state.paused?' • Paused':'')+' • Queue: '+(state.queueLength||0)}
+function animateDashboardPlayer(){if(!dashboardPlayerScrubbing)renderDashboardPlayerProgress();requestAnimationFrame(animateDashboardPlayer)}
+requestAnimationFrame(animateDashboardPlayer);
 async function refreshDashboardPlayer(){try{const state=await api('/api/music/player');dashboardPlayerSnapshot={...state,receivedAt:Date.now()};$('dashboardPlayerTitle').textContent=state.playing?(state.title||'Playing'):'Nothing is playing';const loop=$('playerLoop');if(loop){loop.textContent=state.loopMode==='track'?'🔂 Loop on':'🔂 Loop off';loop.classList.toggle('active',state.loopMode==='track')}const slider=$('playerProgressSlider');slider.max=state.duration||Math.max(100,state.position||0);if(!dashboardPlayerScrubbing&&document.activeElement!==$('playerSeekPosition'))$('playerSeekPosition').value=state.position||0;if(!dashboardPlayerScrubbing&&document.activeElement!==slider)slider.value=Math.min(state.position||0,Number(slider.max));if(state.segmentEnd&&!$('playerSegmentEnd').value)$('playerSegmentEnd').value=state.segmentEnd;renderDashboardPlayerProgress()}catch(e){$('dashboardPlayerTitle').textContent='Player status unavailable'}}
 async function controlDashboardPlayer(action,values={}){const status=$('playerControlStatus');try{const result=await api('/api/music/player',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,...values})});status.textContent=action==='seek'?'Jumping to selected position…':action==='stop'?'Playback stopped.':action==='pause'?'Playback state updated.':action==='loop'?(result.loopMode==='track'?'Repeat current track enabled.':'Loop disabled.'):'';await refreshDashboardPlayer();return result}catch(e){status.textContent=e.message||'Player control failed.';throw e}}
 $('playerProgressSlider').onpointerdown=()=>{dashboardPlayerScrubbing=true};
 $('playerProgressSlider').onkeydown=()=>{dashboardPlayerScrubbing=true};
 $('playerProgressSlider').oninput=()=>{const value=Number($('playerProgressSlider').value);$('playerSeekPosition').value=value;renderDashboardPlayerProgress(value)};
 $('playerProgressSlider').onchange=async()=>{const value=Number($('playerProgressSlider').value);$('playerSeekPosition').value=value;try{await controlDashboardPlayer('seek',{position:value})}catch{}finally{dashboardPlayerScrubbing=false;await refreshDashboardPlayer()}};
-setInterval(()=>{if(!dashboardPlayerScrubbing)renderDashboardPlayerProgress()},250);
+
 $('playerPause').onclick=()=>controlDashboardPlayer('pause').catch(()=>{});
 $('playerLoop').onclick=()=>controlDashboardPlayer('loop').catch(()=>{});
 $('playMusicHistory').onclick=async()=>{const history=readMusicHistory(),index=Number($('musicHistorySelect').value),item=history[index];if(!item){$('musicStatus').textContent='Choose a history item first.';return}await playDashboardMusicUrl(item.url,$('playMusicHistory'))};
