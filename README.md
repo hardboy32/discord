@@ -95,7 +95,7 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 - Start command: `npm start` (starts Lavalink and the bot under one supervisor)
 - Public networking/domain: required for the dashboard
 - Port: Railway supplies `PORT` for the dashboard; Lavalink uses private `127.0.0.1:2333` only
-- FFmpeg: the `ffmpeg-static` npm dependency remains available for local media inspection; Lavalink handles streaming and voice playback
+- Audio processing: Lavalink handles decoding and Discord voice playback directly; the bot no longer starts a separate FFmpeg process
 - Memory: allow enough memory for both Node.js and Java. Reduce `LAVALINK_JAVA_XMX` if the container reaches its memory limit.
 
 ## Environment variables
@@ -112,8 +112,6 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 | `LAVALINK_JAVA_XMX` | Optional | Lavalink Java maximum heap; defaults to `512m` |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
 | `YOUTUBE_API_KEY` | Optional | YouTube live stream alerts |
-| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
-| `YOUTUBE_API_KEY` | Optional | YouTube live stream alerts |
 | `DASHBOARD_GUILD_ID` | Optional | Single dashboard server; defaults to `686002315148394502` |
 | `DISCORD_CLIENT_SECRET` | Dashboard | Discord OAuth2 Client Secret |
 | `DASHBOARD_SESSION_SECRET` | Dashboard | Long random secret used to sign login sessions |
@@ -125,7 +123,7 @@ Never commit real bot tokens, API keys, or YouTube cookies to GitHub. Add secret
 
 ### Lavalink and YouTube
 
-The Docker image downloads the official Lavalink 4.2.2 release and configures the YouTube Source plugin 1.18.2. The YouTube source tries several supported InnerTube clients in order. No YouTube cookie variable is required for normal public tracks. YouTube may still restrict playback from a hosting IP, so SoundCloud remains the alternate search source.
+The Docker image downloads the official Lavalink 4.2.2 release and configures a pinned YouTube Source plugin snapshot. The YouTube source tries several supported InnerTube clients in order. The Lavalink audio buffers are tuned to better tolerate short processing pauses, and Opus encoding quality is set to a CPU-friendlier level. No YouTube cookie variable is required for normal public tracks. YouTube may still restrict playback from a hosting IP, so SoundCloud remains the alternate search source.
 
 Lavalink listens only on `127.0.0.1:2333`; it is not exposed as a public Railway port. The startup supervisor creates a random internal password automatically unless `LAVALINK_PASSWORD` is supplied. Java plugin dependencies are cached under the Railway Volume when it is mounted at `/app/data`.
 
