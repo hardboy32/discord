@@ -131,7 +131,7 @@ function addYoutubeExtractorOptions(args, cookiePath, useBgutil) {
     args.push('--plugin-dirs', path.join(BGUTIL_ROOT, 'plugin'));
     args.push('--js-runtimes', 'node');
     args.push('--extractor-args', 'youtubepot-bgutilscript:server_home=' + path.join(BGUTIL_ROOT, 'server'));
-    args.push('--extractor-args', 'youtube:player-client=mweb,tv,web_safari');
+    args.push('--extractor-args', 'youtube:player_client=mweb');
   }
 }
 
