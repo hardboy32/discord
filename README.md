@@ -48,9 +48,11 @@ When a track starts, the bot posts or updates one music player message in the te
 ### AutoMod and server logs
 - Optional Discord invite filtering, message-spam detection (5 messages / 5 seconds), mass-mention filtering, and blocked-word filtering.
 - AutoMod ignores members with Manage Messages or Administrator permission.
-- Configurable event logging for joins, departures, deleted/edited messages (without recording message content), bans, unbans, and channel/role creation or deletion.
+- Configurable server event logs with 65 independent switches in the dashboard: member joins/leaves, bans/unbans, nickname/role/timeout/boost/avatar changes; voice joins/leaves/moves, mute/deafen, camera, streaming, stage and voice effects; message metadata, edit/delete/bulk-delete, pins, reactions, polls and optional typing events; AutoMod rules/actions; channels, threads, roles, server settings, emojis, stickers, soundboard, invites, webhooks, integrations, slash-command permissions, scheduled events and stage instances.
+- Optional Discord audit-log entry logging can identify administrative actions such as kicks and permission changes when the bot has **View Audit Log**. Some low-value or high-volume items (new messages, reactions, poll votes, typing, presence and detailed voice-state changes) start disabled.
+- Message content is never included in event logs. Message-create logs record only author and channel; edit/delete logs record author and channel only. Presence/activity logging is opt-in and requires the **Presence Intent** in Discord Developer Portal plus `ENABLE_PRESENCE_LOGGING=true` in Railway Variables.
+- Configure the destination channel and each log switch from the dashboard's Moderation page. Select-all and clear-all controls are available.
 - Configurable goodbye messages with `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
-- Configure AutoMod and event logging from the dashboard. Set the log channel in the Moderation page.
 
 Moderation commands require the corresponding Discord permissions. The bot role must be above members it is asked to moderate.
 
