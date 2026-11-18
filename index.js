@@ -879,7 +879,6 @@ async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId)
   }
 
   if (retry) {
-    retry.fallbackAttempted = true;
     queue.tracks.unshift(retry);
     console.warn('Lavalink source failed; trying another result:', retry.title, '| previous reason:', String(reason || 'unknown').slice(0, 120));
   } else if (queue.textChannelId) {
@@ -2292,9 +2291,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.connection) return respond(interaction, 'The bot is not in a voice channel.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the bot’s voice channel to disconnect it.');
-        queue.stopping = true;
-        queue.tracks = [];
-        queue.current = null;
         queue.stopping = true;
         queue.tracks = [];
         queue.current = null;
