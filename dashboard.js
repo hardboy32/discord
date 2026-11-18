@@ -598,11 +598,22 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         target.searchParams.set('response_type', 'code');
         target.searchParams.set('scope', 'identify guilds');
         target.searchParams.set('state', state);
-        return res.writeHead(302, { location: target.toString(), 'cache-control': 'no-store' }).end();
+        return res.writeHead(302, {
+          location: target.toString(),
+          'cache-control': 'no-store',
+          'set-cookie': 'hb_oauth_state=' + encodeURIComponent(state) + '; HttpOnly; Secure; SameSite=Lax; Path=/auth/callback; Max-Age=300',
+        }).end();
       }
       if (req.method === 'GET' && url.pathname === '/auth/callback') {
         const state = url.searchParams.get('state');
-        if (!state || !states.has(state) || states.get(state) < Date.now()) return send(res, 400, 'Invalid login state.', 'text/plain');
+        const browserState = cookieValue(req, 'hb_oauth_state');
+        if (!state || browserState !== state || !states.has(state) || states.get(state) < Date.now()) {
+          return res.writeHead(400, {
+            'content-type': 'text/plain; charset=utf-8',
+            'cache-control': 'no-store',
+            'set-cookie': 'hb_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/auth/callback; Max-Age=0',
+          }).end('Invalid login state.');
+        }
         states.delete(state);
         const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
           method: 'POST',
