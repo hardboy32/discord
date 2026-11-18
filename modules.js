@@ -216,17 +216,24 @@ function attachCoreModules(client, getSettings) {
       const role = member.guild.roles.cache.get(autorole.roleId) || await member.guild.roles.fetch(autorole.roleId).catch(() => null);
       if (role && role.editable) await member.roles.add(role, 'Configured automatic member role').catch(error => console.warn('Auto-role assignment failed:', error.message || error));
     }
+    if (config.logging && config.logging.enabled !== false) {
+      await sendLog(member.guild, 'Member joined', member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
+    }
+  });
+  client.on(Events.GuildMemberRemove, async member => {
+    const config = getSettings(member.guild.id);
+    await sendLog(member.guild, 'Member left', member.user.tag + ' (' + member.id + ') left the server.', 0xd69a4b);
     const goodbye = config.goodbye || {};
-    if (config.logging && config.logging.enabled !== false) await sendLog(member.guild, 'Member joined', member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
     if (!goodbye.enabled || !goodbye.channelId) return;
-    const channel = member.guild.channels.cache.get(goodbye.channelId);
+    const channel = member.guild.channels.cache.get(goodbye.channelId) ||
+      await member.guild.channels.fetch(goodbye.channelId).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
     const text = String(goodbye.message || 'Goodbye {user}! We will miss you.')
       .replace(/\{user\}/g, member.user.username).replace(/\{username\}/g, member.user.username)
       .replace(/\{server\}/g, member.guild.name).replace(/\{count\}/g, String(member.guild.memberCount || 0));
-    await channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
+    await channel.send({ content: text, allowedMentions: { parse: [] } })
+      .catch(error => console.warn('Goodbye message failed:', error.message || error));
   });
-  client.on(Events.GuildMemberRemove, async member => sendLog(member.guild, 'Member left', member.user.tag + ' (' + member.id + ') left the server.', 0xd69a4b));
   client.on(Events.GuildBanAdd, async ban => sendLog(ban.guild, 'Member banned', ban.user.tag + ' (' + ban.user.id + ') was banned.', 0xd65b70));
   client.on(Events.GuildBanRemove, async ban => sendLog(ban.guild, 'Member unbanned', ban.user.tag + ' (' + ban.user.id + ') was unbanned.', 0x55bd91));
   client.on(Events.ChannelCreate, async channel => { if (channel.guild) await sendLog(channel.guild, 'Channel created', '#' + channel.name + ' (' + channel.id + ') was created.'); });
