@@ -130,7 +130,7 @@ function addYoutubeExtractorOptions(args, cookiePath, useBgutil) {
     args.push('--plugin-dirs', path.join(BGUTIL_ROOT, 'plugin'));
     args.push('--js-runtimes', 'node');
     args.push('--extractor-args', 'youtubepot-bgutilscript:server_home=' + path.join(BGUTIL_ROOT, 'server'));
-    args.push('--extractor-args', 'youtube:player_client=mweb');
+    args.push('--extractor-args', 'youtube:player-client=mweb,tv,web_safari');
   }
 }
 
@@ -162,7 +162,15 @@ async function ensureYtDlpReady() {
         }
         ytDlpCookiesText = cookieText;
         ytDlpCookieCount = cookieLines.length;
+        const cookieNames = new Set(cookieLines.map(line => line.split('\t')[5] || ''));
+        const hasLoginSessionCookie = [
+          'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
+          '__Secure-1PSID', '__Secure-3PSID',
+        ].some(name => cookieNames.has(name));
         console.log('YouTube cookies loaded from Railway secret (' + ytDlpCookieCount + ' entries).');
+        if (!hasLoginSessionCookie) {
+          console.warn('The cookie file has no common YouTube account-session cookie. Re-export a fresh Netscape cookies file while signed in to YouTube, then update YOUTUBE_COOKIES_B64 in Railway.');
+        }
         console.log('A fresh private cookie-file copy will be created for every yt-dlp process.');
       } else {
         console.log('YouTube cookies are not configured; yt-dlp will try without account cookies.');
@@ -191,7 +199,7 @@ async function removeYtDlpCookieCopy(cookiePath) {
 async function getYoutubeInfo(queryOrUrl) {
   await ensureYtDlpReady();
   const useBgutil = await ensureBgutilReady();
-  const args = ['--dump-single-json', '--no-warnings', '--no-playlist', '--skip-download'];
+  const args = ['--dump-single-json', '--no-warnings', '--verbose', '--no-playlist', '--skip-download'];
   const cookiePath = await createYtDlpCookieCopy();
   addYoutubeExtractorOptions(args, cookiePath, useBgutil);
   args.push(queryOrUrl);
@@ -211,8 +219,15 @@ async function getYoutubeInfo(queryOrUrl) {
       clearTimeout(timeout);
       void removeYtDlpCookieCopy(cookiePath);
       if (code !== 0 || !stdout.trim()) {
-        const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
-        reject(new Error('YouTube extraction failed: ' + (safeError || 'yt-dlp exited with code ' + code)));
+        const debugLines = stderr.split(/\r?\n/).filter(line =>
+          /PO Token Providers|Generating a .*PO Token|LOGIN_REQUIRED|Sign in to confirm|cookie file|cookies from/i.test(line)
+        ).slice(-10);
+        const errorLines = stderr.split(/\r?\n/).filter(line => /ERROR:|WARNING:/.test(line)).slice(-4);
+        const diagnostic = [...debugLines, ...errorLines]
+          .map(line => line.replace(/https?:\/\/\S+/g, '[URL omitted]').trim())
+          .filter(Boolean)
+          .join(' | ');
+        reject(new Error('YouTube extraction failed: ' + (diagnostic || 'yt-dlp exited with code ' + code)));
         return;
       }
       try {
@@ -446,6 +461,7 @@ const MUSIC_REQUEST_CLEANUP_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PA
 const MUSIC_REQUEST_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MUSIC_REQUEST_CLEANUP_CHECK_MS = 5 * 60 * 1000;
 const musicRequestCleanupRunning = new Set();
+const musicRequestCleanupStartupLogged = new Set();
 let musicRequestCleanupTimer = null;
 
 function loadMusicRequestCleanupState() {
@@ -521,7 +537,17 @@ async function checkMusicRequestCleanup(readyClient) {
     const guildSettings = getDashboardSettings(guild.id);
     const musicSettings = guildSettings && guildSettings.music ? guildSettings.music : {};
     const requestChannelId = String(musicSettings.requestChannelId || '').trim();
-    if (!musicSettings.enabled || !requestChannelId) continue;
+
+    if (!musicSettings.enabled || !requestChannelId) {
+      if (!musicRequestCleanupStartupLogged.has(guild.id)) {
+        console.log(
+          'Daily music request cleanup is not scheduled for guild ' + guild.id + ': ' +
+          (!musicSettings.enabled ? 'the music module is disabled.' : 'no request channel is selected in Dashboard Settings.')
+        );
+        musicRequestCleanupStartupLogged.add(guild.id);
+      }
+      continue;
+    }
 
     const saved = musicRequestCleanupState[guild.id];
     if (
@@ -540,7 +566,19 @@ async function checkMusicRequestCleanup(readyClient) {
         (selectedChannel ? selectedChannel.name : requestChannelId) +
         '; the first cleanup will run in 24 hours.'
       );
+      musicRequestCleanupStartupLogged.add(guild.id);
       continue;
+    }
+
+    if (!musicRequestCleanupStartupLogged.has(guild.id)) {
+      const remainingMs = Math.max(0, MUSIC_REQUEST_CLEANUP_INTERVAL_MS - (Date.now() - Number(saved.lastCleanupAt)));
+      const selectedChannel = guild.channels.cache.get(requestChannelId);
+      console.log(
+        'Daily music request cleanup is active in #' +
+        (selectedChannel ? selectedChannel.name : requestChannelId) +
+        '; next cleanup in about ' + Math.ceil(remainingMs / 60000) + ' minutes.'
+      );
+      musicRequestCleanupStartupLogged.add(guild.id);
     }
 
     if (Date.now() - Number(saved.lastCleanupAt) < MUSIC_REQUEST_CLEANUP_INTERVAL_MS) continue;
