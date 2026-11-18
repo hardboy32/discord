@@ -1039,7 +1039,11 @@ async function getDashboardMusicStatus(guildId) {
   const elapsed = queue.lavalinkPlayer
     ? Math.max(0, Number(queue.lavalinkPlayer.position || queue.lavalinkPosition || 0) / 1000)
     : (track && track.startedAt ? Math.max(0, (Date.now() - track.startedAt) / 1000) : 0);
-  const position = track ? Math.max(0, (Number(track.startOffset) || 0) + elapsed) : 0;
+  // Lavalink/Shoukaku player.position is already the absolute track position.
+  // Only add the offset when using the local wall-clock fallback.
+  const position = track
+    ? Math.max(0, queue.lavalinkPlayer ? elapsed : (Number(track.startOffset) || 0) + elapsed)
+    : 0;
   return {
     playing,
     paused: queue.player.state.status === AudioPlayerStatus.Paused,
