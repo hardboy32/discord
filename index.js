@@ -747,6 +747,7 @@ function getQueue(guildId) {
     lavalinkPlayer: null,
     lavalinkPosition: 0,
     pendingTrackFailure: null,
+    playbackWatchdog: null,
     voiceChannelId: null,
     voiceStatusText: null,
     textChannelId: null,
@@ -943,15 +944,52 @@ async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId)
 function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
   lavalinkPlayer.on('start', () => {
     if (queue.lavalinkPlayer !== lavalinkPlayer || !queue.current) return;
+    const startedTrack = queue.current;
+    if (queue.playbackWatchdog) clearTimeout(queue.playbackWatchdog);
     queue.player.state.status = lavalinkPlayer.paused ? AudioPlayerStatus.Paused : AudioPlayerStatus.Playing;
     queue.lavalinkPosition = lavalinkPlayer.position || 0;
-    console.log('Lavalink started track:', queue.current.title);
-    void updateMusicPanel(queue, queue.current);
+    console.log('Lavalink started track:', startedTrack.title);
+    void updateMusicPanel(queue, startedTrack);
+
+    // Some source failures arrive from Lavalink without a useful end event.
+    // If a track starts but its playback position never advances, stop it so
+    // the normal end/fallback pipeline can try another source.
+    queue.playbackWatchdog = setTimeout(async () => {
+      if (queue.lavalinkPlayer !== lavalinkPlayer || queue.current !== startedTrack ||
+          queue.stopping || queue.skipCurrent || lavalinkPlayer.paused) return;
+      const position = Math.max(
+        Number(lavalinkPlayer.position || 0),
+        Number(queue.lavalinkPosition || 0)
+      );
+      if (position >= 1500) {
+        queue.playbackWatchdog = null;
+        return;
+      }
+      console.warn('Lavalink playback watchdog: track did not advance; requesting source fallback:', startedTrack.title);
+      queue.pendingTrackFailure = 'Playback did not advance after the track-start event';
+      try {
+        await lavalinkPlayer.stopTrack();
+      } catch (error) {
+        console.error('Playback watchdog could not stop failed track:', error.message || error);
+        if (queue.current === startedTrack) {
+          queue.current = null;
+          queue.player.state.status = AudioPlayerStatus.Idle;
+          queue.lavalinkPosition = 0;
+          queue.pendingTrackFailure = null;
+          void queueLavalinkFailureFallback(queue, startedTrack, 'Playback did not advance after the track-start event', guildId);
+        }
+      }
+    }, 15000);
+    if (typeof queue.playbackWatchdog.unref === 'function') queue.playbackWatchdog.unref();
   });
 
   lavalinkPlayer.on('update', data => {
     if (queue.lavalinkPlayer === lavalinkPlayer && data && data.state) {
       queue.lavalinkPosition = Number(data.state.position || 0);
+      if (queue.playbackWatchdog && queue.lavalinkPosition >= 1500) {
+        clearTimeout(queue.playbackWatchdog);
+        queue.playbackWatchdog = null;
+      }
     }
   });
 
@@ -969,7 +1007,13 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
 
   lavalinkPlayer.on('end', event => {
     if (queue.lavalinkPlayer !== lavalinkPlayer) return;
+    if (queue.playbackWatchdog) {
+      clearTimeout(queue.playbackWatchdog);
+      queue.playbackWatchdog = null;
+    }
     const finishedTrack = queue.current;
+    console.log('Lavalink track ended:', finishedTrack && finishedTrack.title || 'unknown track',
+      '| reason:', event && event.reason || 'unknown');
     const reason = event && event.reason ? event.reason : 'unknown';
     queue.current = null;
     queue.player.state.status = AudioPlayerStatus.Idle;
