@@ -68,6 +68,7 @@ const { startDashboard, getDashboardSettings } = require('./dashboard');
 const { attachCoreModules, getCoreCommands, handleCoreInteraction } = require('./modules');
 const { getCommunityCommands, handleCommunityInteraction, attachCommunityModules } = require('./community');
 const YOUTUBE_COOKIES_B64 = (process.env.YOUTUBE_COOKIES_B64 || '').trim();
+const YOUTUBE_USE_COOKIES = /^true$/i.test(String(process.env.YOUTUBE_USE_COOKIES || '').trim());
 const YTDLP_PATH = path.join('/tmp', process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
 let ytDlpInitPromise = null;
 let ytDlpCookiesText = null;
@@ -149,7 +150,7 @@ async function ensureYtDlpReady() {
         await fs.promises.writeFile(YTDLP_PATH, binary, { mode: 0o700 });
         await fs.promises.chmod(YTDLP_PATH, 0o700);
       }
-      if (YOUTUBE_COOKIES_B64) {
+      if (YOUTUBE_USE_COOKIES && YOUTUBE_COOKIES_B64) {
         const cookieText = Buffer.from(YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
         const cookieLines = cookieText.split(/\r?\n/).filter(line => {
           if (!line || (line.startsWith('#') && !line.startsWith('#HttpOnly_'))) return false;
@@ -173,7 +174,12 @@ async function ensureYtDlpReady() {
         }
         console.log('A fresh private cookie-file copy will be created for every yt-dlp process.');
       } else {
-        console.log('YouTube cookies are not configured; yt-dlp will try without account cookies.');
+        ytDlpCookiesText = null;
+        if (YOUTUBE_COOKIES_B64 && !YOUTUBE_USE_COOKIES) {
+          console.log('YOUTUBE_COOKIES_B64 is present but ignored. Public YouTube playback is using guest mode; set YOUTUBE_USE_COOKIES=true only for account-restricted videos.');
+        } else {
+          console.log('YouTube account cookies are disabled; public playback will use BgUtils PO Tokens without a signed-in account.');
+        }
       }
       console.log('yt-dlp is ready.');
     })().catch(error => { ytDlpInitPromise = null; throw error; });
@@ -324,8 +330,12 @@ async function getYtDlpMediaInfo(url) {
 
 async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 0) {
   if (!ffmpegPath) throw new Error('FFmpeg is not available on this host.');
-  const args = ['-hide_banner', '-loglevel', 'warning'];
   const start = Math.max(0, Number(startSeconds) || 0);
+  const end = Math.max(0, Number(endSeconds) || 0);
+  if (track.source === 'soundcloud' && track.soundCloudInfo) {
+    return createSoundCloudPcmProcess(track.soundCloudInfo, track.title, start, end);
+  }
+  const args = ['-hide_banner', '-loglevel', 'warning'];
   const isLocal = track.source === 'local' && track.filePath;
   let mediaStream = null;
 
@@ -342,7 +352,6 @@ async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 
     args.push('-i', 'pipe:0');
   }
 
-  const end = Math.max(0, Number(endSeconds) || 0);
   if (end > start) args.push('-t', String(end - start));
   args.push('-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1');
 
@@ -892,7 +901,7 @@ async function resolveSoundCloudPlaylistUrl(trackInfo, trackTitle) {
   throw lastError || new Error('All SoundCloud HLS formats failed.');
 }
 
-async function createSoundCloudPcmStream(trackInfo, trackTitle) {
+async function createSoundCloudPcmProcess(trackInfo, trackTitle, startSeconds = 0, endSeconds = 0) {
   const playlistUrl = await resolveSoundCloudPlaylistUrl(trackInfo, trackTitle);
   const args = [
     '-hide_banner',
@@ -906,13 +915,19 @@ async function createSoundCloudPcmStream(trackInfo, trackTitle) {
     '-rw_timeout', '15000000',
     '-threads', '1',
     '-i', playlistUrl,
+  ];
+  const start = Math.max(0, Number(startSeconds) || 0);
+  const end = Math.max(0, Number(endSeconds) || 0);
+  if (start > 0) args.push('-ss', String(start));
+  if (end > start) args.push('-t', String(end - start));
+  args.push(
     '-vn',
     '-acodec', 'pcm_s16le',
     '-f', 's16le',
     '-ar', '48000',
     '-ac', '2',
-    'pipe:1',
-  ];
+    'pipe:1'
+  );
 
   console.log('Starting diagnostic SoundCloud FFmpeg PCM pipeline:', trackTitle);
   const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -944,7 +959,7 @@ async function createSoundCloudPcmStream(trackInfo, trackTitle) {
     }
   });
 
-  return { stream: child.stdout, process: child };
+  return child;
 }
 async function findSoundCloudTrack(query, requestedBy) {
   await ensureSoundCloudReady();
@@ -972,6 +987,21 @@ async function findSoundCloudTrack(query, requestedBy) {
   if (!candidates.length) return null;
   candidates[0].alternatives = candidates.slice(1);
   return candidates[0];
+}
+
+async function findYouTubeTrack(query, requestedBy) {
+  const video = await getYoutubeInfo('ytsearch1:' + query);
+  if (!video || !video.webpage_url) return null;
+  return {
+    title: video.title || query,
+    url: video.webpage_url,
+    duration: durationText(durationSecondsFromInfo(video)),
+    thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
+    requestedBy,
+    searchQuery: query,
+    source: 'ytdlp',
+    durationSeconds: durationSecondsFromInfo(video),
+  };
 }
 
 async function findTrack(query, requestedBy) {
@@ -1112,20 +1142,25 @@ async function findTrack(query, requestedBy) {
     };
   }
 
-  const video = await getYoutubeInfo('ytsearch1:' + input);
-  if (!video || !video.webpage_url) {
-    throw new Error('No track found. Try a more specific title or provide a YouTube or SoundCloud URL.');
+  // Prefer public SoundCloud tracks for title-only requests. This path does not
+  // require YouTube account cookies and avoids relying on YouTube datacenter access.
+  try {
+    const soundCloudTrack = await findSoundCloudTrack(input, requestedBy);
+    if (soundCloudTrack) {
+      soundCloudTrack.fallbackAttempted = true;
+      soundCloudTrack.youtubeFallbackAttempted = false;
+      console.log('Title search resolved through SoundCloud:', soundCloudTrack.title);
+      return soundCloudTrack;
+    }
+  } catch (error) {
+    console.warn('SoundCloud title search failed; trying YouTube:', error.message || error);
   }
-  return {
-    title: video.title || input,
-    url: video.webpage_url,
-    duration: durationText(durationSecondsFromInfo(video)),
-    thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
-    requestedBy,
-    searchQuery: input,
-    source: 'ytdlp',
-    durationSeconds: durationSecondsFromInfo(video),
-  };
+
+  const videoTrack = await findYouTubeTrack(input, requestedBy);
+  if (!videoTrack) {
+    throw new Error('No playable track found on SoundCloud or YouTube. Try adding the artist name or provide a direct supported link.');
+  }
+  return videoTrack;
 }
 async function setMusicVoiceChannelStatus(queue, status, channelIdOverride = null, force = false) {
   const channelId = channelIdOverride || (queue && queue.voiceChannelId);
@@ -1635,9 +1670,29 @@ async function playNext(guildId) {
     if (track.source === 'soundcloud' && Array.isArray(track.alternatives) && track.alternatives.length) {
       const [nextCandidate, ...remainingCandidates] = track.alternatives;
       nextCandidate.alternatives = remainingCandidates;
+      nextCandidate.youtubeFallbackAttempted = Boolean(track.youtubeFallbackAttempted);
       queue.tracks.unshift(nextCandidate);
       retryingOnSoundCloud = true;
       console.warn('SoundCloud candidate failed; trying another result:', nextCandidate.title);
+    }
+
+    if (
+      !retryingOnSoundCloud &&
+      track.source === 'soundcloud' &&
+      !track.youtubeFallbackAttempted &&
+      track.searchQuery
+    ) {
+      try {
+        const youtubeFallback = await findYouTubeTrack(track.searchQuery, track.requestedBy);
+        if (youtubeFallback && youtubeFallback.url !== track.url) {
+          youtubeFallback.fallbackAttempted = true;
+          queue.tracks.unshift(youtubeFallback);
+          retryingOnSoundCloud = true;
+          console.warn('SoundCloud results failed; trying YouTube as the final source:', youtubeFallback.title);
+        }
+      } catch (fallbackError) {
+        console.warn('YouTube fallback search failed:', fallbackError.message || fallbackError);
+      }
     }
 
     if (!retryingOnSoundCloud && track.source !== 'soundcloud' && !track.fallbackAttempted) {
