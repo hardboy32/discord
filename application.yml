@@ -1,0 +1,36 @@
+server:
+  address: 127.0.0.1
+  port: 2333
+
+lavalink:
+  server:
+    password: "${LAVALINK_PASSWORD:local-only-password-not-for-public-use}"
+    sources:
+      youtube: false
+      soundcloud: true
+      local: true
+    playerUpdateInterval: 5
+    trackStuckThresholdMs: 10000
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+      snapshot: false
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - MUSIC
+      - ANDROID_VR
+      - WEB
+      - MWEB
+      - TVHTML5_SIMPLY
+      - WEBEMBEDDED
+
+logging:
+  level:
+    root: INFO
