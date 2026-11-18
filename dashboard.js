@@ -226,7 +226,6 @@ h2{font-size:19px;margin:0 0 16px}
 <div class="actions"><button id="playDashboardMusic">▶ Play / add to queue</button><span id="musicStatus" role="status" aria-live="polite"></span></div>
 <p class="hint">Supported links: individual YouTube videos / Shorts and SoundCloud tracks. Playlists, channels and unsupported sites are not accepted. The bot needs Connect and Speak permission in the selected voice channel.</p>
 </div>
-</section>
 <div class="panel">
 <h2>Saved music library</h2>
 <p class="muted">Upload an audio file once. It stays on the Railway Volume after restarts and redeploys until you delete it. Choose a voice channel to play it in Discord.</p>
@@ -238,6 +237,7 @@ h2{font-size:19px;margin:0 0 16px}
 <div id="musicLibraryList" class="command" style="display:block;margin-top:16px">Loading saved tracks…</div>
 <p class="hint">Maximum file size: 20 MB per track. Audio files are stored in /app/data/music-library.</p>
 </div>
+</section>
 <section id="page-commands" class="page hidden"><div class="panel"><h2>Bot command library</h2><p class="muted">All registered slash commands, grouped by purpose. Admin actions can be launched from the action panel.</p><div id="commandList"></div></div><div class="panel"><h2>Run a moderation command</h2><p class="muted">The bot checks your live server permissions again before executing an action.</p><div class="formrow"><label class="field">Command<select id="adminAction"><option value="kick">Kick member</option><option value="ban">Ban member</option><option value="timeout">Timeout member</option><option value="untimeout">Remove timeout</option><option value="clear">Delete messages</option><option value="slowmode">Set slowmode</option><option value="lock">Lock channel</option><option value="unlock">Unlock channel</option></select></label><label class="field">Member ID<input id="targetUser" placeholder="Discord user ID"></label></div><div class="formrow"><label class="field">Amount / minutes<input id="actionAmount" type="number" min="1" placeholder="For timeout or clear"></label><label class="field">Channel<select id="actionChannel"></select></label></div><label class="field">Reason (optional)<input id="actionReason" placeholder="Reason for this action"></label><div class="actions"><button class="danger" id="runAction">Execute command</button><span id="actionStatus"></span></div><p class="hint">For safety, this panel currently supports direct moderation actions. Music playback controls remain available through Discord slash commands.</p></div></section>
 <section id="page-moderation" class="page hidden"><div class="panel"><h2>Moderation & AutoMod</h2><label class="check"><input id="moderationEnabled" type="checkbox"> Enable moderation commands</label><label class="check"><input id="antiLink" type="checkbox"> Block Discord invite links</label><label class="check"><input id="antiSpam" type="checkbox"> Detect message spam (5 messages in 5 seconds)</label><label class="check"><input id="antiMentionSpam" type="checkbox"> Block mass mentions (more than 5 users)</label><label class="field">Blocked words (one per line)<textarea id="blockedWords" placeholder="word1&#10;word2"></textarea></label><label class="field">Moderation / event log channel<select id="logChannel"></select></label><label class="check"><input id="loggingEnabled" type="checkbox"> Enable server event logs</label><button id="saveModeration">Save moderation settings</button> <span id="moderationStatus"></span><p class="hint">AutoMod ignores members with Manage Messages or Administrator permission. Deleted-message logs do not include message contents.</p></div></section>
 <section id="page-modules" class="page hidden"><div class="panel"><h2>Bot modules</h2><label class="check"><input id="musicEnabled" type="checkbox"> Enable music commands</label><label class="check"><input id="aiEnabled" type="checkbox"> Enable AI replies</label><p class="hint">AI replies require GROQ_API_KEY in Railway Variables.</p><h2 style="margin-top:24px">Automatic role</h2><label class="check"><input id="autoroleEnabled" type="checkbox"> Give a role to every new member</label><label class="field">Role to assign<select id="autoroleRole"></select></label><p class="hint">The bot needs Manage Roles permission, and its highest role must be above the selected role.</p><button id="saveModules">Save module settings</button> <span id="moduleStatus"></span></div></section>
@@ -475,7 +475,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           if (!await authorizeMusicManager()) return send(res, 403, { error: 'Server management permission required.' });
           fs.mkdirSync(musicLibraryDir, { recursive: true });
           const tracks = fs.readdirSync(musicLibraryDir, { withFileTypes: true })
-            .filter(entry => entry.isFile() && !entry.isSymbolicLink() && /^[a-f0-9]{32}__[a-zA-Z0-9 _-]{1,70}\\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(entry.name))
+            .filter(entry => entry.isFile() && !entry.isSymbolicLink() && /^[a-f0-9]{32}__[a-zA-Z0-9 _-]{1,70}\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(entry.name))
             .map(entry => {
               const full = path.join(musicLibraryDir, entry.name);
               const stat = fs.statSync(full);
@@ -495,7 +495,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           if (!allowed.has(extension) || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return send(res, 400, { error: 'Choose a supported audio file.' });
           const bytes = Buffer.from(encoded, 'base64');
           if (!bytes.length || bytes.length > 20 * 1024 * 1024) return send(res, 400, { error: 'Audio file must be 20 MB or smaller.' });
-          const safeBase = path.basename(originalName, path.extname(originalName)).replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\\s+/g, ' ').trim().slice(0,70) || 'audio';
+          const safeBase = path.basename(originalName, path.extname(originalName)).replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, ' ').trim().slice(0,70) || 'audio';
           fs.mkdirSync(musicLibraryDir, { recursive: true });
           const id = crypto.randomBytes(16).toString('hex');
           fs.writeFileSync(path.join(musicLibraryDir, id + '__' + safeBase + '.' + extension), bytes, { mode: 0o600, flag: 'wx' });
@@ -512,7 +512,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           const voiceChannel = await liveGuild.channels.fetch(voiceChannelId).catch(() => null);
           if (!voiceChannel || voiceChannel.type !== 2) return send(res, 400, { error: 'The selected channel is not a regular voice channel.' });
           const entries = fs.existsSync(musicLibraryDir) ? fs.readdirSync(musicLibraryDir) : [];
-          const filename = entries.find(name => name.startsWith(id + '__') && /\\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(name));
+          const filename = entries.find(name => name.startsWith(id + '__') && /\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(name));
           if (!filename) return send(res, 404, { error: 'Saved audio file not found.' });
           const fullPath = path.join(musicLibraryDir, filename);
           const titleMatch = /^[a-f0-9]{32}__(.*)\\.[^.]+$/i.exec(filename);
@@ -529,7 +529,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           const id = url.pathname.slice('/api/music/library/'.length);
           if (!/^[a-f0-9]{32}$/.test(id)) return send(res, 400, { error: 'Invalid music file ID.' });
           if (!fs.existsSync(musicLibraryDir)) return send(res, 404, { error: 'Saved audio file not found.' });
-          const filename = fs.readdirSync(musicLibraryDir).find(name => name.startsWith(id + '__') && /\\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(name));
+          const filename = fs.readdirSync(musicLibraryDir).find(name => name.startsWith(id + '__') && /\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(name));
           if (!filename) return send(res, 404, { error: 'Saved audio file not found.' });
           await fs.promises.unlink(path.join(musicLibraryDir, filename));
           return send(res, 200, { ok: true });
