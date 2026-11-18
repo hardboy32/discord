@@ -247,9 +247,9 @@ async function getYtDlpMediaUrl(url) {
     child.on('close', code => {
       clearTimeout(timeout);
       void removeYtDlpCookieCopy(cookiePath);
-      const mediaUrl = stdout.trim().split(/\\r?\\n/).filter(Boolean).pop();
-      if (code !== 0 || !mediaUrl || !/^https?:\\/\\//i.test(mediaUrl)) {
-        const safeError = stderr.replace(/https?:\\/\\/\\S+/g, '[URL omitted]').trim();
+      const mediaUrl = stdout.trim().split(/\r?\n/).filter(Boolean).pop();
+      if (code !== 0 || !mediaUrl || !/^https?:\/\//i.test(mediaUrl)) {
+        const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
         reject(new Error('Could not extract an audio stream from this site: ' + (safeError || 'unsupported or protected media')));
         return;
       }
