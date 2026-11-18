@@ -23,7 +23,6 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  StringSelectMenuBuilder,
 } = require('discord.js');
 const AudioPlayerStatus = Object.freeze({
   Idle: 'idle',
@@ -40,7 +39,6 @@ const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODEL = (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
-const DASHBOARD_GUILD_ID = (process.env.DASHBOARD_GUILD_ID || '686002315148394502').trim();
 
 if (!TOKEN) {
   console.error('Missing DISCORD_TOKEN. Add the bot token in Railway Variables.');
@@ -667,7 +665,7 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
   });
 }
 
- new Map();
+const pendingMusicSelections = new Map();
 
 async function searchTrackCandidates(query, requestedBy) {
   const input = String(query || '').trim();
@@ -1069,7 +1067,6 @@ async function controlDashboardMusic(guildId, action, values = {}) {
   if (action === 'stop') {
     queue.stopping = true;
     queue.tracks = [];
-    if (track.ffmpegProcess && !track.ffmpegProcess.killed) track.ffmpegProcess.kill('SIGTERM');
     queue.player.stop(true);
     return { playing: false, paused: false, position: 0, duration: 0, title: '' };
   }
@@ -1084,7 +1081,6 @@ async function controlDashboardMusic(guildId, action, values = {}) {
     const replacement = { ...track, startAt: requested, endAt, startedAt: 0, startOffset: requested };
     queue.seekInProgress = true;
     queue.tracks.unshift(replacement);
-    if (track.ffmpegProcess && !track.ffmpegProcess.killed) track.ffmpegProcess.kill('SIGTERM');
     queue.player.stop(true);
     if (wasPaused) replacement.resumePaused = true;
     return { queued: true, position: requested, endAt };
