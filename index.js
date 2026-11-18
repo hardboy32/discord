@@ -318,13 +318,12 @@ async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 
     if (start > 0) args.push('-ss', String(start));
     args.push('-i', track.filePath);
   } else {
-    // Resolve the selected media format and its request headers. Passing the
-    // real URL plus headers to FFmpeg allows HTTP range requests, so seeking
-    // does not require downloading/decoding the entire track from the start.
-    const media = await getYtDlpMediaInfo(track.url);
+    // Stream YouTube audio through yt-dlp instead of passing its temporary
+    // direct media URL to FFmpeg. This avoids FFmpeg crashes seen with some
+    // YouTube media URLs and keeps cookies / PO-token handling in yt-dlp.
+    mediaStream = await createYoutubeStream(track.url);
     if (start > 0) args.push('-ss', String(start));
-    if (media.headers) args.push('-headers', media.headers);
-    args.push('-i', media.url);
+    args.push('-i', 'pipe:0');
   }
 
   const end = Math.max(0, Number(endSeconds) || 0);
