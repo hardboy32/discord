@@ -2033,10 +2033,16 @@ client.on(Events.MessageCreate, async (message) => {
         await message.reply({ content: result.error, allowedMentions: { repliedUser: false } }).catch(() => {});
         return;
       }
-      await message.reply({
+      const confirmationMessage = await message.reply({
         content: '🎵 Added **' + result.track.title.slice(0, 160) + '** to the queue. Position: ' + result.position + '.',
         allowedMentions: { repliedUser: false },
-      }).catch(() => {});
+      }).catch(() => null);
+      if (confirmationMessage) {
+        const deleteTimer = setTimeout(() => {
+          void confirmationMessage.delete().catch(() => {});
+        }, 5000);
+        if (typeof deleteTimer.unref === 'function') deleteTimer.unref();
+      }
     } catch (musicError) {
       console.error('Music request channel failed:', musicError.stack || musicError);
       await message.reply({
