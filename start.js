@@ -24,14 +24,14 @@ function forwardImportantLogs(child, label) {
       const lines = buffers[streamName].split(/\r?\n/);
       buffers[streamName] = lines.pop() || '';
       for (const line of lines) {
-        if (/\b(WARN|WARNING|ERROR|FATAL|SEVERE)\\b|\\b(error|failed|exception)\\b/i.test(line)) {
+        if (/(WARN|WARNING|ERROR|FATAL|SEVERE|error|failed|exception)/i.test(line)) {
           console.error('[' + label + '] ' + line);
         }
       }
     });
     stream.on('end', () => {
       const line = buffers[streamName].trim();
-      if (line && /\\b(WARN|WARNING|ERROR|FATAL|SEVERE)\\b|\\b(error|failed|exception)\\b/i.test(line)) {
+      if (line && /(WARN|WARNING|ERROR|FATAL|SEVERE|error|failed|exception)/i.test(line)) {
         console.error('[' + label + '] ' + line);
       }
     });
