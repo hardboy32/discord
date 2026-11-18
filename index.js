@@ -1209,19 +1209,22 @@ function loopModeLabel(mode) {
 }
 
 function buildMusicPanel(queue, track) {
-  const embed = new EmbedBuilder()
+  const infoEmbed = new EmbedBuilder()
     .setColor(0x5865F2)
-    .setTitle('🎵 Now Playing')
-    .setDescription('[' + track.title.slice(0, 240) + '](' + track.url + ')')
+    .setTitle('🎧 NOW PLAYING')
+    .setDescription('**[' + track.title.slice(0, 240) + '](' + track.url + ')**')
     .addFields(
-      { name: 'Duration', value: String(track.duration || 'Unknown'), inline: true },
-      { name: 'Requested by', value: String(track.requestedBy || 'Unknown').slice(0, 80), inline: true },
-      { name: 'Loop Mode', value: loopModeLabel(queue.loopMode), inline: true }
+      { name: '⏱️ Duration', value: String(track.duration || 'Unknown'), inline: true },
+      { name: '👤 Requested by', value: String(track.requestedBy || 'Unknown').slice(0, 80), inline: true },
+      { name: '🔁 Loop', value: loopModeLabel(queue.loopMode), inline: true }
     )
-    .setFooter({ text: 'Use the buttons below to control playback' });
+    .setFooter({ text: 'HARD MUSIC PLAYER • Use the controls below' });
+
+  // A separate second embed gives the artwork its own full-width area,
+  // so an uploaded animated GIF appears as the centerpiece of the player.
+  const artworkEmbed = new EmbedBuilder().setColor(0x2B2D31);
   const panelImage = track.thumbnail || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
-  embed.setImage(panelImage);
-  if (track.thumbnail) embed.setThumbnail(track.thumbnail);
+  artworkEmbed.setImage(panelImage);
   console.log('Music panel artwork:', track.thumbnail ? 'track thumbnail' : 'fallback GIF', panelImage);
 
   const paused = queue.player.state.status === AudioPlayerStatus.Paused;
@@ -1252,7 +1255,7 @@ function buildMusicPanel(queue, track) {
       .setEmoji('📜')
       .setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [embed], components: [row] };
+  return { embeds: [infoEmbed, artworkEmbed], components: [row] };
 }
 
 async function updateMusicPanel(queue, track) {
@@ -1261,24 +1264,21 @@ async function updateMusicPanel(queue, track) {
   if (!channel || !channel.isTextBased()) return;
 
   const payload = buildMusicPanel(queue, track);
+  const artworkEmbed = payload.embeds[1];
   const musicSettings = getDashboardSettings(channel.guildId).music || {};
   const forceUploadedArtwork = musicSettings.artworkMode === 'force';
   if (track.thumbnail && !forceUploadedArtwork) {
-    payload.embeds[0].setImage(track.thumbnail).setThumbnail(track.thumbnail);
+    artworkEmbed.setImage(track.thumbnail);
     console.log('Music panel artwork: using track cover');
   } else {
     try {
       const fallbackAttachment = await createFallbackGifAttachment();
-      payload.embeds[0].setImage('attachment://music-fallback.gif').setThumbnail(null);
+      artworkEmbed.setImage('attachment://music-fallback.gif');
       payload.files = [fallbackAttachment];
       console.log('Music panel artwork:', forceUploadedArtwork ? 'forced uploaded artwork' : 'fallback for missing track cover');
     } catch (error) {
       console.warn('Could not upload fallback GIF; using the remote image URL:', error.message || error);
-      if (track.thumbnail && !forceUploadedArtwork) {
-        payload.embeds[0].setImage(track.thumbnail).setThumbnail(track.thumbnail);
-      } else {
-        payload.embeds[0].setImage(MUSIC_FALLBACK_GIF_URL).setThumbnail(null);
-      }
+      artworkEmbed.setImage(MUSIC_FALLBACK_GIF_URL);
     }
   }
 
