@@ -810,6 +810,7 @@ function getQueue(guildId) {
     lavalinkPlayer: null,
     lavalinkPosition: 0,
     pendingTrackFailure: null,
+    endEventTimer: null,
     playbackWatchdog: null,
     voiceChannelId: null,
     voiceStatusText: null,
@@ -1026,15 +1027,17 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
   lavalinkPlayer.on('start', () => {
     if (queue.lavalinkPlayer !== lavalinkPlayer || !queue.current) return;
     const startedTrack = queue.current;
+    if (queue.endEventTimer) {
+      clearTimeout(queue.endEventTimer);
+      queue.endEventTimer = null;
+    }
     if (queue.playbackWatchdog) clearTimeout(queue.playbackWatchdog);
     queue.player.state.status = lavalinkPlayer.paused ? AudioPlayerStatus.Paused : AudioPlayerStatus.Playing;
     queue.lavalinkPosition = lavalinkPlayer.position || 0;
     console.log('Lavalink started track:', startedTrack.title);
     void updateMusicPanel(queue, startedTrack);
 
-    // Some source failures arrive from Lavalink without a useful end event.
-    // If a track starts but its playback position never advances, stop it so
-    // the normal end/fallback pipeline can try another source.
+    // If the stream never advances, stop it and let the end handler run fallback.
     queue.playbackWatchdog = setTimeout(async () => {
       if (queue.lavalinkPlayer !== lavalinkPlayer || queue.current !== startedTrack ||
           queue.stopping || queue.skipCurrent || lavalinkPlayer.paused) return;
@@ -1093,38 +1096,49 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
       queue.playbackWatchdog = null;
     }
     const finishedTrack = queue.current;
-    console.log('Lavalink track ended:', finishedTrack && finishedTrack.title || 'unknown track',
-      '| reason:', event && event.reason || 'unknown');
     const reason = event && event.reason ? event.reason : 'unknown';
-    queue.current = null;
-    queue.player.state.status = AudioPlayerStatus.Idle;
-    queue.lavalinkPosition = 0;
+    console.log('Lavalink track ended:', finishedTrack && finishedTrack.title || 'unknown track',
+      '| reason:', reason);
 
-    const failure = queue.pendingTrackFailure || (reason === 'loadFailed' ? 'Lavalink could not load the track' : '');
-    queue.pendingTrackFailure = null;
+    // Lavalink can emit TrackEnd before TrackException for a failed source.
+    // Keep the current track briefly so a late exception can trigger fallback.
+    if (queue.endEventTimer) clearTimeout(queue.endEventTimer);
+    queue.endEventTimer = setTimeout(() => {
+      queue.endEventTimer = null;
+      if (queue.lavalinkPlayer !== lavalinkPlayer) return;
+      if (queue.current !== finishedTrack && finishedTrack) return;
 
-    if (queue.seekInProgress) {
-      queue.seekInProgress = false;
-      setImmediate(() => void playNext(guildId));
-      return;
-    }
+      queue.current = null;
+      queue.player.state.status = AudioPlayerStatus.Idle;
+      queue.lavalinkPosition = 0;
 
-    if (failure && finishedTrack && !queue.stopping && !queue.skipCurrent) {
-      void queueLavalinkFailureFallback(queue, finishedTrack, failure, guildId);
-      return;
-    }
+      const failure = queue.pendingTrackFailure || (reason === 'loadFailed' ? 'Lavalink could not load the track' : '');
+      queue.pendingTrackFailure = null;
 
-    if (reason === 'finished' && finishedTrack && !queue.skipCurrent && !queue.stopping) {
-      if (queue.loopMode === 'track') queue.tracks.unshift(finishedTrack);
-      else if (queue.loopMode === 'queue') queue.tracks.push(finishedTrack);
-    }
+      if (queue.seekInProgress) {
+        queue.seekInProgress = false;
+        setImmediate(() => void playNext(guildId));
+        return;
+      }
 
-    queue.skipCurrent = false;
-    queue.stopping = false;
-    setImmediate(() => {
-      if (queue.tracks.length) void playNext(guildId);
-      else void markPlaybackFinished(queue);
-    });
+      if (failure && finishedTrack && !queue.stopping && !queue.skipCurrent) {
+        void queueLavalinkFailureFallback(queue, finishedTrack, failure, guildId);
+        return;
+      }
+
+      if (reason === 'finished' && finishedTrack && !queue.skipCurrent && !queue.stopping) {
+        if (queue.loopMode === 'track') queue.tracks.unshift(finishedTrack);
+        else if (queue.loopMode === 'queue') queue.tracks.push(finishedTrack);
+      }
+
+      queue.skipCurrent = false;
+      queue.stopping = false;
+      setImmediate(() => {
+        if (queue.tracks.length) void playNext(guildId);
+        else void markPlaybackFinished(queue);
+      });
+    }, 1200);
+    if (typeof queue.endEventTimer.unref === 'function') queue.endEventTimer.unref();
   });
 
   lavalinkPlayer.on('closed', event => {
