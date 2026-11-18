@@ -173,5 +173,6 @@ Groq free-tier rate limits apply and can change. If the key is absent, the bot's
 ```bash
 npm install
 npm run check
-npm start
 ```
+
+The full runtime is intended for the included Docker image or Railway. `start.js` expects the Docker build to provide the compiled YouTube Cipher binary and `Lavalink.jar`; running `npm start` directly on a plain local Node.js install will stop with a missing-binary message.
