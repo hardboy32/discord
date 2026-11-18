@@ -1880,6 +1880,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.current) return respond(interaction, 'No track is currently playing.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const paused = queue.player.pause(true);
         if (paused) await updateMusicPanel(queue, queue.current);
         return respond(interaction, paused ? 'Playback paused.' : 'Playback cannot be paused.');
@@ -1889,6 +1890,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.current) return respond(interaction, 'There is no track to resume.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the same voice channel as the bot to control playback.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const resumed = queue.player.unpause();
         if (resumed) await updateMusicPanel(queue, queue.current);
         return respond(interaction, resumed ? 'Playback resumed.' : 'Playback is not paused.');
@@ -1909,6 +1911,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = queues.get(interaction.guildId);
         if (!queue || !queue.connection) return respond(interaction, 'The bot is not in a voice channel.');
         if (!(await userSharesVoice(interaction, queue))) return respond(interaction, 'Join the bot’s voice channel to disconnect it.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         queue.stopping = true;
         queue.tracks = [];
         queue.current = null;
@@ -1964,6 +1967,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!interaction.channel || !interaction.channel.isTextBased() || !interaction.channel.bulkDelete) {
           return respond(interaction, 'This command cannot be used in this channel.');
         }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const deleted = await interaction.channel.bulkDelete(amount, true);
         return respond(interaction, deleted.size + ' messages deleted. (Messages older than 14 days cannot be bulk-deleted.)');
       }
@@ -1973,18 +1977,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!interaction.channel || typeof interaction.channel.setRateLimitPerUser !== 'function') {
           return respond(interaction, 'This command cannot be used in this channel.');
         }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await interaction.channel.setRateLimitPerUser(seconds, 'Changed by ' + interaction.user.tag);
         return respond(interaction, seconds === 0 ? 'Slowmode disabled.' : 'Slowmode set to ' + seconds + ' seconds.');
       }
 
       case 'lock': {
         if (!interaction.channel || !interaction.channel.permissionOverwrites) return respond(interaction, 'This command cannot be used in this channel.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false }, { reason: 'Locked by ' + interaction.user.tag });
         return respond(interaction, 'Channel locked.');
       }
 
       case 'unlock': {
         if (!interaction.channel || !interaction.channel.permissionOverwrites) return respond(interaction, 'This command cannot be used in this channel.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null }, { reason: 'Unlocked by ' + interaction.user.tag });
         return respond(interaction, 'Channel unlocked.');
       }
