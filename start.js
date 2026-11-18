@@ -22,7 +22,7 @@ if (!process.env.YT_CIPHER_PASSWORD) {
 const password = process.env.LAVALINK_PASSWORD;
 const cipherPassword = process.env.YT_CIPHER_PASSWORD;
 const requestedHeap = String(process.env.LAVALINK_JAVA_XMX || '512m').trim();
-const javaHeap = /^\\d{2,4}[mMgG]$/.test(requestedHeap) ? requestedHeap : '512m';
+const javaHeap = /^\d{2,4}[mMgG]$/.test(requestedHeap) ? requestedHeap : '512m';
 
 let cipherProcess = null;
 let javaProcess = null;
