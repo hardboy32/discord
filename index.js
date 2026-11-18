@@ -1203,9 +1203,9 @@ async function findTrack(query, requestedBy) {
     return track;
   }
 
-  // Search SoundCloud first, then YouTube. Both search and audio extraction
-  // are handled by Lavalink rather than the bot's former FFmpeg/yt-dlp stream.
-  for (const source of ['soundcloud', 'youtube']) {
+  // Prefer YouTube for title searches so a loose SoundCloud match cannot
+  // hijack a request. SoundCloud remains a fallback when YouTube has no result.
+  for (const source of ['youtube', 'soundcloud']) {
     const prefix = source === 'soundcloud' ? 'scsearch:' : 'ytsearch:';
     try {
       const candidates = await resolveLavalinkTracks(prefix + input, requestedBy, input, source);
