@@ -1580,7 +1580,7 @@ async function enqueueTrackFromMessage(message, query) {
 }
 
 client.on(Events.MessageCreate, async (message) => {
-  if (!message.guild || message.author.bot || !client.user) return;
+  if (!message.guild || message.author.bot || message.__autoModBlocked || !client.user) return;
   const guildSettings = getDashboardSettings(message.guildId);
   const requestChannelId = String(guildSettings.music && guildSettings.music.requestChannelId || '');
   if (guildSettings.music.enabled && requestChannelId && message.channelId === requestChannelId) {
