@@ -26,7 +26,8 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     remoteCipher:
-      url: "https://cipher.lavalink-harmonix.me/"
+      url: "http://127.0.0.1:8001"
+      password: "${YT_CIPHER_PASSWORD}"
       userAgent: "hardboy-discord-lavalink"
     clients:
       - WEBEMBEDDED
