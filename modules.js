@@ -196,6 +196,7 @@ function attachCoreModules(client, getSettings) {
     }
     if (!reason && mod.antiMentionSpam && message.mentions.users.size > 5) reason = 'Mass mention (more than 5 users)';
     if (!reason) return;
+    message.__autoModBlocked = true;
     await message.delete().catch(() => {});
     await sendLog(message.guild, 'AutoMod action', message.author.tag + ' (' + message.author.id + ') — ' + reason, 0xe0a04b);
   });
