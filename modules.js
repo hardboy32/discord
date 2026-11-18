@@ -38,13 +38,14 @@ async function handleCoreInteraction(interaction) {
     const staffRole = interaction.options.getRole('staff_role', true);
     const transcriptChannel = interaction.options.getChannel('transcript_channel', true);
     const category = interaction.options.getChannel('category');
+    const cfg = ticketDashboardConfig(interaction.guildId);
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
-      .setTitle('Support Center')
-      .setDescription('Need help? Press the button below to open a private support ticket.')
+      .setTitle(String(cfg.title || 'Support Center').slice(0, 256))
+      .setDescription(String(cfg.description || 'Need help? Press the button below to open a private support ticket.').slice(0, 4000))
       .setFooter({ text: 'ticket-config|' + staffRole.id + '|' + transcriptChannel.id + '|' + (category ? category.id : '') });
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket:open').setLabel(cfg.buttonLabel || 'Open a ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')
+      new ButtonBuilder().setCustomId('ticket:open').setLabel(String(cfg.buttonLabel || 'Open a ticket').slice(0, 80)).setStyle(ButtonStyle.Primary).setEmoji('🎫')
     );
     await panelChannel.send({ embeds: [embed], components: [row] });
     await interaction.reply({ content: 'Ticket panel created in ' + panelChannel.toString() + '. Staff: ' + staffRole.toString() + '. Transcripts: ' + transcriptChannel.toString() + (category ? ' Category: ' + category.name : ''), flags: MessageFlags.Ephemeral });
