@@ -1,9 +1,9 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 // Keep Railway logs focused on warnings and errors by default.
 // Set DEBUG_LOGS=true in Railway Variables to enable routine diagnostics.
 const logDebug = (...args) => {
-  if (/^true$/i.test(String(process.env.DEBUG_LOGS || ''))) logDebug(...args);
+  if (/^true$/i.test(String(process.env.DEBUG_LOGS || ''))) console.log(...args);
 };
 
 const fs = require('node:fs');
