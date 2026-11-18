@@ -413,7 +413,8 @@ const client = new Client({
 attachCoreModules(client, getDashboardSettings);
 attachCommunityModules(client);
 const queues = new Map();
-const MUSIC_FALLBACK_GIF_URL = (process.env.MUSIC_FALLBACK_GIF_URL || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif').trim();
+const MUSIC_FALLBACK_GIF_URL = 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
+const MUSIC_FALLBACK_GIF_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-fallback.gif');
 const MUSIC_PANEL_STATE_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-panels.json');
 
 function loadMusicPanelState() {
@@ -442,21 +443,21 @@ function saveMusicPanelState() {
 }
 
 async function createFallbackGifAttachment() {
-  if (!MUSIC_FALLBACK_GIF_URL || !/^https:\/\//i.test(MUSIC_FALLBACK_GIF_URL)) {
-    throw new Error('MUSIC_FALLBACK_GIF_URL must be a valid HTTPS URL.');
+  if (fs.existsSync(MUSIC_FALLBACK_GIF_FILE)) {
+    const buffer = await fs.promises.readFile(MUSIC_FALLBACK_GIF_FILE);
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
+      throw new Error('Uploaded fallback GIF is empty or larger than 8 MB.');
+    }
+    return new AttachmentBuilder(buffer, { name: 'music-fallback.gif' });
   }
   const response = await fetch(MUSIC_FALLBACK_GIF_URL, {
     signal: AbortSignal.timeout(15000),
     redirect: 'follow',
   });
-  if (!response.ok) throw new Error('Fallback GIF download failed (HTTP ' + response.status + ').');
-  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-  if (contentType && !contentType.includes('image/')) {
-    throw new Error('Fallback artwork URL did not return an image.');
-  }
+  if (!response.ok) throw new Error('Default fallback GIF download failed (HTTP ' + response.status + ').');
   const buffer = Buffer.from(await response.arrayBuffer());
   if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
-    throw new Error('Fallback GIF is empty or larger than 8 MB.');
+    throw new Error('Default fallback GIF is empty or larger than 8 MB.');
   }
   return new AttachmentBuilder(buffer, { name: 'music-fallback.gif' });
 }
