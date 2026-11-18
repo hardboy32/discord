@@ -1381,13 +1381,18 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
   if (!safeFilePath.startsWith(libraryRoot)) {
     throw new Error('The saved audio file is outside the music library folder.');
   }
+  // Lavalink's built-in LocalAudioSourceManager expects the absolute file
+  // path itself as the load identifier; "local:" is not a valid source prefix.
+  console.log('Resolving saved library audio through Lavalink local source:', path.basename(safeFilePath));
   const localResults = await resolveLavalinkTracks(
-    'local:' + safeFilePath,
+    safeFilePath,
     requestedBy || 'Dashboard',
     String(savedTrack.title || 'Uploaded audio'),
     'local'
   );
-  if (!localResults.length) throw new Error('Lavalink could not open this saved audio file.');
+  if (!localResults.length) {
+    throw new Error('Lavalink returned no audio track for the saved file. Confirm local source is enabled and the file is accessible at ' + safeFilePath + '.');
+  }
   const track = {
     ...localResults[0],
     title: String(savedTrack.title || localResults[0].title || 'Uploaded audio').slice(0, 180),
