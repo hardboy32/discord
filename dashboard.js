@@ -74,7 +74,9 @@ function merge(base, value) {
 let settings = loadSettings();
 function saveSettings() {
   fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  const temporaryFile = SETTINGS_FILE + '.tmp';
+  fs.writeFileSync(temporaryFile, JSON.stringify(settings, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(temporaryFile, SETTINGS_FILE);
 }
 function sign(value) {
   return crypto.createHmac('sha256', SESSION_SECRET).update(value).digest('hex');
