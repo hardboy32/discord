@@ -460,6 +460,7 @@ function getQueue(guildId) {
     current: null,
     connection: null,
     voiceChannelId: null,
+    voiceStatusText: null,
     textChannelId: null,
     starting: false,
     loopMode: 'off',
@@ -879,6 +880,25 @@ async function findTrack(query, requestedBy) {
     durationSeconds: durationSecondsFromInfo(video),
   };
 }
+async function setMusicVoiceChannelStatus(queue, status) {
+  const channelId = queue && queue.voiceChannelId;
+  if (!channelId) return;
+  const normalized = status == null ? null : String(status).trim().slice(0, 500);
+  if (queue.voiceStatusText === normalized) return;
+  try {
+    await client.rest.put(Routes.channelVoiceStatus(channelId), {
+      body: { status: normalized },
+    });
+    queue.voiceStatusText = normalized;
+    console.log('Voice channel status updated:', normalized || '(cleared)');
+  } catch (error) {
+    console.warn(
+      'Could not update voice channel status. Grant the bot Set Voice Channel Status permission:',
+      error.message || error
+    );
+  }
+}
+
 async function connectVoice(guild, channel, queue) {
   if (
     queue.connection &&
@@ -887,6 +907,9 @@ async function connectVoice(guild, channel, queue) {
   ) return queue.connection;
 
   if (queue.connection) {
+    if (queue.voiceChannelId && queue.voiceChannelId !== channel.id) {
+      void setMusicVoiceChannelStatus(queue, null);
+    }
     try { queue.connection.destroy(); } catch (_) {}
     queue.connection = null;
   }
@@ -1167,6 +1190,7 @@ async function updateMusicPanel(queue, track) {
 }
 
 async function markPlaybackFinished(queue) {
+  void setMusicVoiceChannelStatus(queue, null);
   if (!queue.nowPlayingMessage) return;
   const embed = new EmbedBuilder()
     .setColor(0x747F8D)
@@ -1249,6 +1273,7 @@ async function playNext(guildId) {
     });
     queue.player.play(resource);
     if (track.resumePaused) queue.player.pause(true);
+    void setMusicVoiceChannelStatus(queue, '🎵 ' + String(track.title || 'Now Playing'));
     await updateMusicPanel(queue, track);
     console.log('Audio resource queued:', track.title);
     console.log('Seekable FFmpeg audio stream linked to Discord audio resource:', track.title);
@@ -1846,6 +1871,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
+        void setMusicVoiceChannelStatus(queue, null);
         queue.connection.destroy();
         queue.connection = null;
         queue.voiceChannelId = null;
