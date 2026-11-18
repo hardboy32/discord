@@ -738,6 +738,40 @@ async function connectVoice(guild, channel, queue) {
   return connection;
 }
 
+const MUSIC_LIBRARY_DIR = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-library');
+
+async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, requestedBy = 'Dashboard') {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('The bot is not connected to the configured Discord server.');
+  const channel = await guild.channels.fetch(voiceChannelId).catch(() => null);
+  if (!channel || channel.type !== 2) throw new Error('Choose a regular voice channel from this server.');
+  const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+  const permissions = botMember && channel.permissionsFor(botMember);
+  if (!permissions || !permissions.has(PermissionFlagsBits.Connect) || !permissions.has(PermissionFlagsBits.Speak)) {
+    throw new Error('The bot needs Connect and Speak permissions in #' + channel.name + '.');
+  }
+  if (!savedTrack || savedTrack.source !== 'local' || !savedTrack.filePath || !fs.existsSync(savedTrack.filePath)) {
+    throw new Error('This saved audio file no longer exists. Refresh the music library.');
+  }
+  const track = {
+    title: String(savedTrack.title || 'Uploaded audio').slice(0, 180),
+    url: 'https://local-library.invalid/' + encodeURIComponent(savedTrack.id || 'audio'),
+    duration: 'Uploaded file',
+    thumbnail: null,
+    requestedBy: requestedBy || 'Dashboard',
+    source: 'local',
+    filePath: savedTrack.filePath,
+    libraryId: savedTrack.id,
+  };
+  const queue = getQueue(guild.id);
+  await connectVoice(guild, channel, queue);
+  const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
+  queue.tracks.push(track);
+  if (!queue.current) void playNext(guild.id);
+  console.log('Dashboard library music request:', track.title, '->', channel.name, '| queue position:', position);
+  return { track, position, channelName: channel.name };
+}
+
 async function playTrackFromDashboard(guildId, voiceChannelId, url, requestedBy = 'Dashboard') {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('The bot is not connected to the configured Discord server.');
@@ -925,7 +959,13 @@ async function playNext(guildId) {
     let resource;
     let soundCloudProcess = null;
 
-    if (track.source === 'soundcloud' && track.soundCloudInfo) {
+    if (track.source === 'local' && track.filePath) {
+      if (!fs.existsSync(track.filePath)) throw new Error('Saved audio file is missing.');
+      resource = createAudioResource(fs.createReadStream(track.filePath), {
+        metadata: track,
+        inputType: StreamType.Arbitrary,
+      });
+    } else if (track.source === 'soundcloud' && track.soundCloudInfo) {
       // Explicitly decode SoundCloud AAC HLS to PCM so FFmpeg diagnostics
       // and the number of decoded audio bytes are visible in runtime logs.
       const direct = await createSoundCloudPcmStream(track.soundCloudInfo, track.title);
@@ -1341,7 +1381,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
-  startDashboard(readyClient, playTrackFromDashboard);
+  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard);
   console.log(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
   console.log('Bot activity is cleared. Use /activity to set it.');
