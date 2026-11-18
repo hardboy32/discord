@@ -21,10 +21,10 @@ function forwardImportantLogs(child, label) {
     stream.setEncoding('utf8');
     stream.on('data', chunk => {
       buffers[streamName] += chunk;
-      const lines = buffers[streamName].split(/\\r?\\n/);
+      const lines = buffers[streamName].split(/\r?\n/);
       buffers[streamName] = lines.pop() || '';
       for (const line of lines) {
-        if (/\\b(WARN|WARNING|ERROR|FATAL|SEVERE)\\b|\\b(error|failed|exception)\\b/i.test(line)) {
+        if (/\b(WARN|WARNING|ERROR|FATAL|SEVERE)\\b|\\b(error|failed|exception)\\b/i.test(line)) {
           console.error('[' + label + '] ' + line);
         }
       }
