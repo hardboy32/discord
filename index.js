@@ -1408,18 +1408,26 @@ async function sendMusicSearchChoices(message, query) {
     candidates,
     expiresAt: Date.now() + 60_000,
   });
-  const options = candidates.slice(0, 25).map((track, index) => ({
-    label: String(track.title || 'Unknown track').replace(/\s+/g, ' ').slice(0, 100),
-    description: (String(track.source || 'music') + ' • ' + String(track.duration || 'Unknown duration')).slice(0, 100),
-    value: String(index),
-  }));
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('music-search:' + selectionId)
-    .setPlaceholder('Choose the exact song you want')
-    .addOptions(options);
+  const rows = [];
+  const visibleCandidates = candidates.slice(0, 25);
+  for (let offset = 0; offset < visibleCandidates.length; offset += 5) {
+    const row = new ActionRowBuilder();
+    for (let index = offset; index < Math.min(offset + 5, visibleCandidates.length); index++) {
+      const track = visibleCandidates[index];
+      const title = String(track.title || 'Unknown track').replace(/\s+/g, ' ').slice(0, 75);
+      const source = String(track.source || 'music').slice(0, 16);
+      const duration = String(track.duration || 'Unknown').slice(0, 12);
+      row.addComponents(new ButtonBuilder()
+        .setCustomId('music-search:' + selectionId + ':' + index)
+        .setLabel((index + 1) + '. ' + title.slice(0, 75 - String(index + 1).length - 2))
+        .setStyle(ButtonStyle.Secondary));
+    }
+    rows.push(row);
+  }
   const reply = await message.reply({
-    content: '🎵 I found these matches for **' + query.slice(0, 160) + '**. Choose the correct song within 60 seconds:',
-    components: [new ActionRowBuilder().addComponents(menu)],
+    content: '🎵 I found these matches for **' + query.slice(0, 160) + '**. Press one of the buttons below to choose your song (60 seconds):\n' +
+      visibleCandidates.map((track, index) => (index + 1) + '. ' + String(track.source || 'music') + ' • ' + String(track.duration || 'Unknown duration')).join('\n'),
+    components: rows,
     allowedMentions: { repliedUser: false },
   });
   const timer = setTimeout(() => {
@@ -1433,7 +1441,8 @@ async function sendMusicSearchChoices(message, query) {
 }
 
 async function handleMusicSearchSelection(interaction) {
-  const selectionId = interaction.customId.slice('music-search:'.length);
+  const parts = interaction.customId.split(':');
+  const selectionId = parts[1];
   const pending = pendingMusicSelections.get(selectionId);
   if (!pending || pending.expiresAt <= Date.now()) {
     pendingMusicSelections.delete(selectionId);
@@ -1448,7 +1457,7 @@ async function handleMusicSearchSelection(interaction) {
     await interaction.reply({ content: 'This selection belongs to another channel.', flags: MessageFlags.Ephemeral });
     return;
   }
-  const index = Number(interaction.values[0]);
+  const index = Number(parts[2]);
   const track = Number.isInteger(index) ? pending.candidates[index] : null;
   if (!track) {
     await interaction.reply({ content: 'That result is no longer available. Search again.', flags: MessageFlags.Ephemeral });
@@ -1456,6 +1465,10 @@ async function handleMusicSearchSelection(interaction) {
   }
   await interaction.deferUpdate();
   pendingMusicSelections.delete(selectionId);
+  // Keep the other search results attached to this choice. If the chosen
+  // YouTube result fails, playback can try the remaining candidates.
+  track.alternatives = pending.candidates.filter((candidate, candidateIndex) => candidateIndex !== index);
+  track.fallbackAttempted = false;
   const member = await interaction.guild.members.fetch(interaction.user.id);
   if (!member.voice.channel) {
     await interaction.message.edit({ content: 'Join a voice channel first, then send the request again.', components: [] }).catch(() => {});
@@ -2431,7 +2444,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     else await interaction.reply(payload).catch(() => {});
     return;
   }
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('music-search:')) {
+  if (interaction.isButton() && interaction.customId.startsWith('music-search:')) {
     try {
       await handleMusicSearchSelection(interaction);
     } catch (error) {
