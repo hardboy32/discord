@@ -1164,7 +1164,9 @@ function buildMusicPanel(queue, track) {
       { name: 'Loop Mode', value: loopModeLabel(queue.loopMode), inline: true }
     )
     .setFooter({ text: 'Use the buttons below to control playback' });
-  embed.setImage(track.thumbnail || 'https://media1.tenor.com/m/j-OaGPLxL0QAAAAC/adventure-time.gif');
+  const panelImage = track.thumbnail || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
+  embed.setImage(panelImage).setThumbnail(panelImage);
+  console.log('Music panel artwork:', track.thumbnail ? 'track thumbnail' : 'fallback GIF', panelImage);
 
   const paused = queue.player.state.status === AudioPlayerStatus.Paused;
   const row = new ActionRowBuilder().addComponents(
