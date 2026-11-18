@@ -440,7 +440,7 @@ function attachCoreModules(client, getSettings) {
   client.on(Events.ThreadDelete, async thread => {
     if (thread.guild) await sendLog(thread.guild, 'threadDelete', 'Thread deleted', thread.name + ' in <#' + thread.parentId + '>', 0xd65b70);
   });
-  client.on('threadMembersUpdate', async (thread, addedMembers, removedMembers) => {
+  client.on(Events.ThreadMembersUpdate, async (addedMembers, removedMembers, thread) => {
     if (!thread.guild || (!addedMembers.size && !removedMembers.size)) return;
     await sendLog(thread.guild, 'threadMembersUpdate', 'Thread members changed',
       thread.name + '\nAdded: ' + addedMembers.size + ' • Removed: ' + removedMembers.size);
