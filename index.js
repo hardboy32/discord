@@ -852,11 +852,57 @@ async function resolveLavalinkTracks(identifier, requestedBy, searchQuery, sourc
 async function findLavalinkAlternative(query, requestedBy, failedSource) {
   const source = failedSource === 'soundcloud' ? 'youtube' : 'soundcloud';
   const prefix = source === 'soundcloud' ? 'scsearch:' : 'ytsearch:';
-  const candidates = await resolveLavalinkTracks(prefix + query, requestedBy, query, source);
-  if (!candidates.length) return null;
-  candidates[0].alternatives = candidates.slice(1);
-  candidates[0].fallbackAttempted = true;
-  return candidates[0];
+
+  try {
+    const candidates = await resolveLavalinkTracks(prefix + query, requestedBy, query, source);
+    if (candidates.length) {
+      candidates[0].alternatives = candidates.slice(1);
+      candidates[0].fallbackAttempted = true;
+      console.log('Lavalink fallback search found ' + candidates.length + ' ' + source + ' candidates.');
+      return candidates[0];
+    }
+    console.warn('Lavalink fallback search returned no ' + source + ' candidates; trying the independent search provider.');
+  } catch (error) {
+    console.warn('Lavalink ' + source + ' fallback search failed; trying the independent search provider:', error.message || error);
+  }
+
+  // Do not rely exclusively on Lavalink's scsearch implementation. Search
+  // SoundCloud independently, then resolve each returned permalink through
+  // Lavalink so playback still uses the existing voice/player pipeline.
+  if (source === 'soundcloud') {
+    try {
+      await ensureSoundCloudReady();
+      const results = await play.search(query, {
+        limit: 8,
+        source: { soundcloud: 'tracks' },
+      });
+      const candidates = [];
+      for (const item of (Array.isArray(results) ? results : [])) {
+        const permalink = item && (item.permalink_url || item.permalink || item.url);
+        if (!permalink) continue;
+        try {
+          const resolved = await resolveLavalinkTracks(permalink, requestedBy, query, 'soundcloud');
+          for (const candidate of resolved) {
+            candidate.fallbackAttempted = true;
+            candidates.push(candidate);
+          }
+        } catch (error) {
+          console.warn('Could not resolve SoundCloud fallback candidate:', error.message || error);
+        }
+        if (candidates.length >= 5) break;
+      }
+      if (candidates.length) {
+        candidates[0].alternatives = candidates.slice(1);
+        console.log('Independent SoundCloud fallback found ' + candidates.length + ' playable Lavalink candidates.');
+        return candidates[0];
+      }
+      console.warn('Independent SoundCloud search returned no tracks that Lavalink could resolve.');
+    } catch (error) {
+      console.warn('Independent SoundCloud fallback failed:', error.message || error);
+    }
+  }
+
+  return null;
 }
 
 async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId) {
