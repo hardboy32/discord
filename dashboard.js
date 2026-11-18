@@ -479,7 +479,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
             .map(entry => {
               const full = path.join(musicLibraryDir, entry.name);
               const stat = fs.statSync(full);
-              const match = /^([a-f0-9]{32})__(.*)\\.([^.]+)$/i.exec(entry.name);
+              const match = /^([a-f0-9]{32})__(.*)\.([^.]+)$/i.exec(entry.name);
               return { id: match[1], title: match[2].replace(/[_-]+/g, ' '), extension: match[3].toLowerCase(), size: stat.size };
             }).sort((a,b) => a.title.localeCompare(b.title));
           return send(res, 200, { tracks });
@@ -515,7 +515,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           const filename = entries.find(name => name.startsWith(id + '__') && /\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(name));
           if (!filename) return send(res, 404, { error: 'Saved audio file not found.' });
           const fullPath = path.join(musicLibraryDir, filename);
-          const titleMatch = /^[a-f0-9]{32}__(.*)\\.[^.]+$/i.exec(filename);
+          const titleMatch = /^[a-f0-9]{32}__(.*)\.[^.]+$/i.exec(filename);
           try {
             const result = await playSavedTrackFromDashboard(GUILD_ID, voiceChannelId, { id, title: titleMatch ? titleMatch[1].replace(/[_-]+/g, ' ') : 'Uploaded audio', source: 'local', filePath: fullPath }, session.user.username);
             return send(res, 200, { ok: true, title: result.track.title, position: result.position, channelName: result.channelName });
