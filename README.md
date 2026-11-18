@@ -110,6 +110,8 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 | `GROQ_API_KEY` | Optional | Enables AI chat replies |
 | `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |
 | `LAVALINK_PASSWORD` | Optional | Private localhost password; generated automatically when omitted |
+| `DEBUG_LOGS` | Optional | Enable routine diagnostic logs while troubleshooting |
+| `ENABLE_PRESENCE_LOGGING` | Optional | Enable online status/activity logs only after enabling Presence Intent in the Discord Developer Portal |
 | `LAVALINK_JAVA_XMX` | Optional | Lavalink Java maximum heap; defaults to `512m` |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
 | `YOUTUBE_API_KEY` | Optional | YouTube live stream alerts |
