@@ -475,7 +475,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           if (!await authorizeMusicManager()) return send(res, 403, { error: 'Server management permission required.' });
           fs.mkdirSync(musicLibraryDir, { recursive: true });
           const tracks = fs.readdirSync(musicLibraryDir, { withFileTypes: true })
-            .filter(entry => entry.isFile() && !entry.isSymbolicLink() && /^[a-f0-9]{32}__[a-zA-Z0-9 _-]{1,70}\.(mp3|wav|ogg|opus|m4a|aac|flac)$/i.test(entry.name))
+            .filter(entry => entry.isFile() && !entry.isSymbolicLink() && /^[a-f0-9]{32}__[\p{L}\p{N} _-]{1,70}\.(mp3|wav|ogg|opus|m4a|aac|flac)$/iu.test(entry.name))
             .map(entry => {
               const full = path.join(musicLibraryDir, entry.name);
               const stat = fs.statSync(full);
@@ -495,7 +495,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard) 
           if (!allowed.has(extension) || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return send(res, 400, { error: 'Choose a supported audio file.' });
           const bytes = Buffer.from(encoded, 'base64');
           if (!bytes.length || bytes.length > 20 * 1024 * 1024) return send(res, 400, { error: 'Audio file must be 20 MB or smaller.' });
-          const safeBase = path.basename(originalName, path.extname(originalName)).replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, ' ').trim().slice(0,70) || 'audio';
+          const safeBase = path.basename(originalName, path.extname(originalName)).replace(/[^\p{L}\p{N} _-]/gu, '').replace(/\s+/g, ' ').trim().slice(0,70) || 'audio';
           fs.mkdirSync(musicLibraryDir, { recursive: true });
           const id = crypto.randomBytes(16).toString('hex');
           fs.writeFileSync(path.join(musicLibraryDir, id + '__' + safeBase + '.' + extension), bytes, { mode: 0o600, flag: 'wx' });
