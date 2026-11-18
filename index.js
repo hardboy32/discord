@@ -434,6 +434,35 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+
+const { Shoukaku, Connectors } = require('shoukaku');
+const LAVALINK_HOST = '127.0.0.1';
+const LAVALINK_PORT = 2333;
+const LAVALINK_PASSWORD = (process.env.LAVALINK_PASSWORD || '').trim();
+const shoukaku = new Shoukaku(
+  new Connectors.DiscordJS(client),
+  [{
+    name: 'Railway-Local',
+    url: LAVALINK_HOST + ':' + LAVALINK_PORT,
+    auth: LAVALINK_PASSWORD,
+    secure: false,
+  }],
+  {
+    resume: true,
+    resumeTimeout: 60,
+    reconnectTries: 10,
+    reconnectInterval: 3,
+  }
+);
+shoukaku.on('ready', (name, resumed) => {
+  console.log('Lavalink node ready:', name, '| session resumed:', Boolean(resumed));
+});
+shoukaku.on('reconnecting', (name, triesLeft, interval) => {
+  console.warn('Lavalink reconnecting:', name, '| attempts left:', triesLeft, '| retry seconds:', interval);
+});
+shoukaku.on('error', (name, error) => {
+  console.error('Lavalink node error:', name, error && error.message ? error.message : 'unknown error');
+});
 attachCoreModules(client, getDashboardSettings);
 attachCommunityModules(client);
 const queues = new Map();
@@ -715,6 +744,9 @@ function getQueue(guildId) {
     tracks: [],
     current: null,
     connection: null,
+    lavalinkPlayer: null,
+    lavalinkPosition: 0,
+    pendingTrackFailure: null,
     voiceChannelId: null,
     voiceStatusText: null,
     textChannelId: null,
@@ -724,24 +756,182 @@ function getQueue(guildId) {
     stopping: false,
     seekInProgress: false,
     nowPlayingMessage: null,
-    player: createAudioPlayer({
-      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
-    }),
+    player: null,
   };
 
-  queue.player.on('stateChange', (oldState, newState) => {
-    console.log(
-      'Audio player state:', oldState.status, '->', newState.status,
-      '| track:', queue.current ? queue.current.title : 'none'
-    );
-    if (newState.status === AudioPlayerStatus.Playing) {
-      console.log('Audio player entered PLAYING state:', queue.current ? queue.current.title : 'unknown');
+  // Keep the existing command/dashboard controls stable while Lavalink
+  // handles the actual remote audio player.
+  queue.player = {
+    state: { status: AudioPlayerStatus.Idle },
+    pause() {
+      if (!queue.lavalinkPlayer || queue.player.state.status !== AudioPlayerStatus.Playing) return false;
+      queue.player.state.status = AudioPlayerStatus.Paused;
+      void queue.lavalinkPlayer.setPaused(true).catch(error => {
+        console.error('Lavalink pause failed:', error.message || error);
+      });
+      return true;
+    },
+    unpause() {
+      if (!queue.lavalinkPlayer || queue.player.state.status !== AudioPlayerStatus.Paused) return false;
+      queue.player.state.status = AudioPlayerStatus.Playing;
+      void queue.lavalinkPlayer.setPaused(false).catch(error => {
+        console.error('Lavalink resume failed:', error.message || error);
+      });
+      return true;
+    },
+    stop() {
+      if (!queue.lavalinkPlayer) return false;
+      void queue.lavalinkPlayer.stopTrack().catch(error => {
+        console.error('Lavalink stop failed:', error.message || error);
+      });
+      return true;
+    },
+  };
+
+  queues.set(guildId, queue);
+  return queue;
+}
+
+async function waitForLavalinkNode(timeoutMs = 120000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const node = [...shoukaku.nodes.values()].find(item => item.state === 1);
+    if (node) return node;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error('The music engine is still starting. Please try again in a moment.');
+}
+
+function mapLavalinkTrack(item, requestedBy, searchQuery, sourceHint) {
+  const info = item && item.info ? item.info : {};
+  const durationSeconds = Math.max(0, Number(info.length || 0) / 1000);
+  const source = String(info.sourceName || sourceHint || '').toLowerCase();
+  let thumbnail = info.artworkUrl || null;
+  if (!thumbnail && source === 'youtube' && info.identifier) {
+    thumbnail = 'https://img.youtube.com/vi/' + encodeURIComponent(info.identifier) + '/hqdefault.jpg';
+  }
+  return {
+    title: String(info.title || 'Unknown track').slice(0, 240),
+    url: info.uri || '',
+    duration: durationText(durationSeconds),
+    durationSeconds,
+    thumbnail,
+    requestedBy: requestedBy || 'Unknown',
+    searchQuery: searchQuery || info.title || '',
+    source,
+    encoded: item.encoded,
+    identifier: info.identifier || '',
+    alternatives: [],
+    fallbackAttempted: false,
+  };
+}
+
+async function resolveLavalinkTracks(identifier, requestedBy, searchQuery, sourceHint) {
+  const node = await waitForLavalinkNode();
+  const result = await node.rest.resolve(identifier);
+  if (!result || result.loadType === 'empty') return [];
+  if (result.loadType === 'error') {
+    const message = result.data && result.data.message;
+    throw new Error(message || 'The music source could not load this track.');
+  }
+
+  let items = [];
+  if (result.loadType === 'track' && result.data && result.data.encoded) {
+    items = [result.data];
+  } else if (result.loadType === 'search' && Array.isArray(result.data)) {
+    items = result.data;
+  } else if (result.loadType === 'playlist' && result.data && Array.isArray(result.data.tracks)) {
+    items = result.data.tracks;
+  }
+
+  return items
+    .filter(item => item && item.encoded && item.info)
+    .map(item => mapLavalinkTrack(item, requestedBy, searchQuery, sourceHint));
+}
+
+async function findLavalinkAlternative(query, requestedBy, failedSource) {
+  const source = failedSource === 'soundcloud' ? 'youtube' : 'soundcloud';
+  const prefix = source === 'soundcloud' ? 'scsearch:' : 'ytsearch:';
+  const candidates = await resolveLavalinkTracks(prefix + query, requestedBy, query, source);
+  if (!candidates.length) return null;
+  candidates[0].alternatives = candidates.slice(1);
+  candidates[0].fallbackAttempted = true;
+  return candidates[0];
+}
+
+async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId) {
+  let retry = null;
+  if (failedTrack && Array.isArray(failedTrack.alternatives) && failedTrack.alternatives.length) {
+    const [nextCandidate, ...remaining] = failedTrack.alternatives;
+    nextCandidate.alternatives = remaining;
+    nextCandidate.fallbackAttempted = Boolean(failedTrack.fallbackAttempted);
+    retry = nextCandidate;
+  } else if (failedTrack && !failedTrack.fallbackAttempted && failedTrack.searchQuery) {
+    try {
+      retry = await findLavalinkAlternative(
+        failedTrack.searchQuery,
+        failedTrack.requestedBy,
+        failedTrack.source
+      );
+    } catch (error) {
+      console.warn('Alternative music source lookup failed:', error.message || error);
+    }
+  }
+
+  if (retry) {
+    retry.fallbackAttempted = true;
+    queue.tracks.unshift(retry);
+    console.warn('Lavalink source failed; trying another result:', retry.title, '| previous reason:', String(reason || 'unknown').slice(0, 120));
+  } else if (queue.textChannelId) {
+    const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
+    if (channel && channel.isTextBased()) {
+      await channel.send('Could not play "' + String(failedTrack && failedTrack.title || 'this track').slice(0, 140) + '". No working alternative was found.').catch(() => {});
+    }
+  }
+
+  setImmediate(() => {
+    if (queue.tracks.length) void playNext(guildId);
+    else void markPlaybackFinished(queue);
+  });
+}
+
+function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
+  lavalinkPlayer.on('start', () => {
+    if (queue.lavalinkPlayer !== lavalinkPlayer || !queue.current) return;
+    queue.player.state.status = lavalinkPlayer.paused ? AudioPlayerStatus.Paused : AudioPlayerStatus.Playing;
+    queue.lavalinkPosition = lavalinkPlayer.position || 0;
+    console.log('Lavalink started track:', queue.current.title);
+    void updateMusicPanel(queue, queue.current);
+  });
+
+  lavalinkPlayer.on('update', data => {
+    if (queue.lavalinkPlayer === lavalinkPlayer && data && data.state) {
+      queue.lavalinkPosition = Number(data.state.position || 0);
     }
   });
 
-  queue.player.on(AudioPlayerStatus.Idle, () => {
+  lavalinkPlayer.on('exception', event => {
+    const exception = event && event.exception ? event.exception : {};
+    queue.pendingTrackFailure = exception.message || exception.cause || 'Lavalink source exception';
+    console.warn('Lavalink track exception:', String(queue.pendingTrackFailure).slice(0, 180));
+  });
+
+  lavalinkPlayer.on('stuck', event => {
+    queue.pendingTrackFailure = 'Audio stream became stuck';
+    console.warn('Lavalink track became stuck:', event && event.thresholdMs ? event.thresholdMs + ' ms' : 'unknown threshold');
+    void lavalinkPlayer.stopTrack().catch(error => console.error('Could not stop stuck Lavalink track:', error.message || error));
+  });
+
+  lavalinkPlayer.on('end', event => {
+    if (queue.lavalinkPlayer !== lavalinkPlayer) return;
     const finishedTrack = queue.current;
+    const reason = event && event.reason ? event.reason : 'unknown';
     queue.current = null;
+    queue.player.state.status = AudioPlayerStatus.Idle;
+    queue.lavalinkPosition = 0;
+
+    const failure = queue.pendingTrackFailure || (reason === 'loadFailed' ? 'Lavalink could not load the track' : '');
+    queue.pendingTrackFailure = null;
 
     if (queue.seekInProgress) {
       queue.seekInProgress = false;
@@ -749,7 +939,12 @@ function getQueue(guildId) {
       return;
     }
 
-    if (finishedTrack && !queue.skipCurrent && !queue.stopping) {
+    if (failure && finishedTrack && !queue.stopping && !queue.skipCurrent) {
+      void queueLavalinkFailureFallback(queue, finishedTrack, failure, guildId);
+      return;
+    }
+
+    if (reason === 'finished' && finishedTrack && !queue.skipCurrent && !queue.stopping) {
       if (queue.loopMode === 'track') queue.tracks.unshift(finishedTrack);
       else if (queue.loopMode === 'queue') queue.tracks.push(finishedTrack);
     }
@@ -762,26 +957,9 @@ function getQueue(guildId) {
     });
   });
 
-  queue.player.on('error', (error) => {
-    console.error('Audio player error:', error.message || error);
-    const failedTrack = queue.current;
-    queue.current = null;
-
-    // Some sources fail only after audio streaming begins. Keep trying the
-    // remaining SoundCloud search candidates in that case too.
-    if (failedTrack && failedTrack.source === 'soundcloud' &&
-        Array.isArray(failedTrack.alternatives) && failedTrack.alternatives.length) {
-      const [nextCandidate, ...remainingCandidates] = failedTrack.alternatives;
-      nextCandidate.alternatives = remainingCandidates;
-      queue.tracks.unshift(nextCandidate);
-      console.warn('SoundCloud stream failed; trying another result:', nextCandidate.title);
-    }
-
-    setTimeout(() => void playNext(guildId), 800);
+  lavalinkPlayer.on('closed', event => {
+    console.warn('Lavalink voice WebSocket closed:', event && event.code, String(event && event.reason || '').slice(0, 120));
   });
-
-  queues.set(guildId, queue);
-  return queue;
 }
 
 function durationSecondsFromInfo(info) {
@@ -1005,162 +1183,45 @@ async function findYouTubeTrack(query, requestedBy) {
 }
 
 async function findTrack(query, requestedBy) {
-  const input = query.trim();
+  const input = String(query || '').trim();
+  if (!input) throw new Error('Enter a song name or a YouTube / SoundCloud link.');
 
   if (/^https?:\/\//i.test(input)) {
     let parsed;
+    try { parsed = new URL(input); }
+    catch { throw new Error('That music URL is invalid.'); }
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const supported = host === 'youtu.be' || host === 'youtube.com' || host.endsWith('.youtube.com') ||
+      host === 'youtube-nocookie.com' || host.endsWith('.youtube-nocookie.com') ||
+      host === 'soundcloud.com' || host.endsWith('.soundcloud.com') || host === 'snd.sc';
+    if (!supported) throw new Error('Use a YouTube or SoundCloud track link.');
+
+    const tracks = await resolveLavalinkTracks(input, requestedBy, input, '');
+    if (!tracks.length) throw new Error('No playable track was found at that link.');
+    const track = tracks[0];
+    track.searchQuery = track.title || input;
+    track.fallbackAttempted = false;
+    return track;
+  }
+
+  // Search SoundCloud first, then YouTube. Both search and audio extraction
+  // are handled by Lavalink rather than the bot's former FFmpeg/yt-dlp stream.
+  for (const source of ['soundcloud', 'youtube']) {
+    const prefix = source === 'soundcloud' ? 'scsearch:' : 'ytsearch:';
     try {
-      parsed = new URL(input);
-    } catch {
-      throw new Error('That URL is invalid. Provide a YouTube video or SoundCloud track link.');
-    }
-
-    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
-    const isYouTubeHost =
-      hostname === 'youtu.be' ||
-      hostname === 'youtube.com' ||
-      hostname.endsWith('.youtube.com') ||
-      hostname === 'youtube-nocookie.com' ||
-      hostname.endsWith('.youtube-nocookie.com');
-
-    if (isYouTubeHost) {
-      let videoId = '';
-      if (hostname === 'youtu.be') {
-        videoId = parsed.pathname.split('/').filter(Boolean)[0] || '';
-      } else if (parsed.pathname === '/watch') {
-        videoId = parsed.searchParams.get('v') || '';
-      } else {
-        const match = parsed.pathname.match(/^\/(?:shorts|live|embed|v)\/([^/?]+)/i);
-        if (match) videoId = match[1];
+      const candidates = await resolveLavalinkTracks(prefix + input, requestedBy, input, source);
+      if (candidates.length) {
+        candidates[0].alternatives = candidates.slice(1);
+        candidates[0].fallbackAttempted = false;
+        console.log('Lavalink title search resolved through ' + source + ':', candidates[0].title);
+        return candidates[0];
       }
-
-      const normalizedUrl = /^[A-Za-z0-9_-]{11}$/.test(videoId)
-        ? 'https://www.youtube.com/watch?v=' + videoId
-        : input;
-
-      if (/^[A-Za-z0-9_-]{11}$/.test(videoId) || play.yt_validate(normalizedUrl) === 'video') {
-        const video = await getYoutubeInfo(normalizedUrl);
-        return {
-          title: video.title || 'YouTube track',
-          url: video.webpage_url || normalizedUrl,
-          duration: durationText(video.duration || 0),
-          thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
-          requestedBy,
-          searchQuery: video.title || normalizedUrl,
-          source: 'ytdlp',
-          durationSeconds: durationSecondsFromInfo(video),
-        };
-      }
-
-      console.warn('Rejected YouTube URL format:', hostname, parsed.pathname);
-      throw new Error('That YouTube link is not a supported single video. Use a video, Shorts, or youtu.be link rather than a channel or playlist.');
-    }
-
-    const isSoundCloudHost =
-      hostname === 'snd.sc' ||
-      hostname === 'soundcloud.com' ||
-      hostname.endsWith('.soundcloud.com');
-
-    if (isSoundCloudHost) {
-      await ensureSoundCloudReady();
-      let soundCloudUrl = input;
-      let isTrack = false;
-      try {
-        isTrack = play.so_validate(soundCloudUrl) === 'track';
-      } catch {
-        isTrack = false;
-      }
-
-      if (!isTrack) {
-        try {
-          const response = await fetch(input, {
-            method: 'GET',
-            redirect: 'follow',
-            headers: { 'user-agent': 'Mozilla/5.0' },
-            signal: AbortSignal.timeout(12000),
-          });
-          soundCloudUrl = response.url || input;
-          if (response.body) await response.body.cancel().catch(() => {});
-        } catch (error) {
-          console.warn('Could not resolve SoundCloud share link:', error.message || error);
-        }
-      }
-
-      let resolvedHost = '';
-      try {
-        resolvedHost = new URL(soundCloudUrl).hostname.toLowerCase().replace(/^www\./, '');
-      } catch {
-        resolvedHost = '';
-      }
-      const resolvedIsSoundCloud =
-        resolvedHost === 'soundcloud.com' || resolvedHost.endsWith('.soundcloud.com');
-
-      let resolvedIsTrack = false;
-      try {
-        resolvedIsTrack = resolvedIsSoundCloud && play.so_validate(soundCloudUrl) === 'track';
-      } catch {
-        resolvedIsTrack = false;
-      }
-
-      if (!resolvedIsTrack) {
-        console.warn('Unsupported SoundCloud URL format:', resolvedHost || hostname);
-        throw new Error('I could not identify a track in that SoundCloud link. Open the track in SoundCloud and copy its full track URL.');
-      }
-
-      const sound = await play.soundcloud(soundCloudUrl);
-      return {
-        title: sound.name || sound.title || 'SoundCloud track',
-        url: sound.permalink || soundCloudUrl,
-        duration: durationText(sound.durationInSec || 0),
-        durationSeconds: durationSecondsFromInfo(sound),
-        thumbnail: getTrackThumbnail(sound.artwork_url, sound.thumbnail),
-        requestedBy,
-        searchQuery: sound.name || sound.title || soundCloudUrl,
-        source: 'soundcloud',
-        fallbackAttempted: true,
-        soundCloudInfo: preferModernSoundCloudFormats(sound, sound.name || sound.title || soundCloudUrl),
-      };
-    }
-
-    console.warn('Trying generic yt-dlp extractor for:', hostname);
-    let mediaInfo;
-    try {
-      mediaInfo = await getYoutubeInfo(input);
     } catch (error) {
-      throw new Error('This site could not be resolved by yt-dlp. The site may require login, block automated playback, or not expose a supported audio stream. Details: ' + String(error.message || error).slice(0, 450));
+      console.warn('Lavalink ' + source + ' search failed; trying the next source:', error.message || error);
     }
-    if (!mediaInfo || !mediaInfo.webpage_url) throw new Error('No playable audio stream was found on this page.');
-    return {
-      title: mediaInfo.title || hostname + ' audio',
-      url: mediaInfo.webpage_url || input,
-      duration: durationText(mediaInfo.duration || 0),
-      durationSeconds: durationSecondsFromInfo(mediaInfo),
-      thumbnail: getTrackThumbnail(mediaInfo.thumbnail, mediaInfo.thumbnails),
-      requestedBy,
-      searchQuery: mediaInfo.title || input,
-      source: 'ytdlp',
-    };
   }
 
-  // Prefer public SoundCloud tracks for title-only requests. This path does not
-  // require YouTube account cookies and avoids relying on YouTube datacenter access.
-  try {
-    const soundCloudTrack = await findSoundCloudTrack(input, requestedBy);
-    if (soundCloudTrack) {
-      soundCloudTrack.fallbackAttempted = true;
-      soundCloudTrack.youtubeFallbackAttempted = false;
-      console.log('Title search resolved through SoundCloud:', soundCloudTrack.title);
-      return soundCloudTrack;
-    }
-  } catch (error) {
-    console.warn('SoundCloud title search failed; trying YouTube:', error.message || error);
-  }
-
-  const videoTrack = await findYouTubeTrack(input, requestedBy);
-  if (!videoTrack) {
-    throw new Error('No playable track found on SoundCloud or YouTube. Try adding the artist name or provide a direct supported link.');
-  }
-  return videoTrack;
+  throw new Error('No playable result was found on SoundCloud or YouTube. Try adding the artist name.');
 }
 async function setMusicVoiceChannelStatus(queue, status, channelIdOverride = null, force = false) {
   const channelId = channelIdOverride || (queue && queue.voiceChannelId);
@@ -1195,51 +1256,48 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 
   if (queue && queue.voiceChannelId === previousChannelId) {
     queue.voiceChannelId = null;
+    queue.connection = null;
+    queue.lavalinkPlayer = null;
+    queue.current = null;
+    queue.tracks = [];
+    queue.player.state.status = AudioPlayerStatus.Idle;
+    queue.lavalinkPosition = 0;
   }
   console.log('Bot left voice channel; clearing its previous channel status:', previousChannelId);
 });
 
 async function connectVoice(guild, channel, queue) {
-  if (
-    queue.connection &&
-    queue.voiceChannelId === channel.id &&
-    queue.connection.state.status !== VoiceConnectionStatus.Destroyed
-  ) return queue.connection;
-
-  if (queue.connection) {
-    if (queue.voiceChannelId && queue.voiceChannelId !== channel.id) {
-      void setMusicVoiceChannelStatus(queue, null);
-    }
-    try { queue.connection.destroy(); } catch (_) {}
-    queue.connection = null;
+  if (queue.lavalinkPlayer && queue.voiceChannelId === channel.id &&
+      shoukaku.players.has(guild.id)) {
+    return queue.lavalinkPlayer;
   }
 
-  const connection = joinVoiceChannel({
-    channelId: channel.id,
+  if (queue.voiceChannelId && queue.voiceChannelId !== channel.id) {
+    void setMusicVoiceChannelStatus(queue, null);
+  }
+  if (shoukaku.connections.has(guild.id)) {
+    await shoukaku.leaveVoiceChannel(guild.id).catch(error => {
+      console.warn('Previous Lavalink voice connection cleanup failed:', error.message || error);
+    });
+  }
+
+  await waitForLavalinkNode();
+  const lavalinkPlayer = await shoukaku.joinVoiceChannel({
     guildId: guild.id,
-    adapterCreator: guild.voiceAdapterCreator,
-    selfDeaf: true,
-  });
-  queue.connection = connection;
-  queue.voiceChannelId = channel.id;
-  const subscription = connection.subscribe(queue.player);
-  console.log('Voice player subscription:', subscription ? 'attached' : 'FAILED');
-  connection.on('stateChange', (oldState, newState) => {
-    console.log('Voice connection state:', oldState.status, '->', newState.status);
-  });
-  connection.on('error', (error) => {
-    console.error('Voice connection error:', error.message || error);
+    channelId: channel.id,
+    shardId: guild.shardId,
+    deaf: true,
   });
 
-  try {
-    await entersState(connection, VoiceConnectionStatus.Ready, 20000);
-  } catch (_) {
-    try { connection.destroy(); } catch (_) {}
-    queue.connection = null;
-    queue.voiceChannelId = null;
-    throw new Error('Could not connect to voice. Make sure the bot has Connect and Speak permissions.');
-  }
-  return connection;
+  queue.connection = shoukaku.connections.get(guild.id) || null;
+  queue.lavalinkPlayer = lavalinkPlayer;
+  queue.voiceChannelId = channel.id;
+  queue.player.state.status = AudioPlayerStatus.Idle;
+  queue.lavalinkPosition = 0;
+  queue.pendingTrackFailure = null;
+  attachLavalinkPlayerEvents(queue, guild.id, lavalinkPlayer);
+  console.log('Lavalink voice player connected:', channel.name, '| guild:', guild.id);
+  return lavalinkPlayer;
 }
 
 const MUSIC_LIBRARY_DIR = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-library');
@@ -1319,16 +1377,28 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
     throw new Error('This saved audio file no longer exists. Refresh the music library.');
   }
   const durationSeconds = await probeLocalAudioDuration(savedTrack.filePath);
+  const safeFilePath = path.resolve(savedTrack.filePath);
+  const libraryRoot = path.resolve(MUSIC_LIBRARY_DIR) + path.sep;
+  if (!safeFilePath.startsWith(libraryRoot)) {
+    throw new Error('The saved audio file is outside the music library folder.');
+  }
+  const localResults = await resolveLavalinkTracks(
+    'local:' + safeFilePath,
+    requestedBy || 'Dashboard',
+    String(savedTrack.title || 'Uploaded audio'),
+    'local'
+  );
+  if (!localResults.length) throw new Error('Lavalink could not open this saved audio file.');
   const track = {
-    title: String(savedTrack.title || 'Uploaded audio').slice(0, 180),
-    url: 'https://local-library.invalid/' + encodeURIComponent(savedTrack.id || 'audio'),
-    duration: durationSeconds > 0 ? durationText(durationSeconds) : 'Unknown',
-    durationSeconds,
-    thumbnail: null,
-    requestedBy: requestedBy || 'Dashboard',
+    ...localResults[0],
+    title: String(savedTrack.title || localResults[0].title || 'Uploaded audio').slice(0, 180),
+    duration: durationSeconds > 0 ? durationText(durationSeconds) : localResults[0].duration,
+    durationSeconds: durationSeconds > 0 ? durationSeconds : localResults[0].durationSeconds,
     source: 'local',
-    filePath: savedTrack.filePath,
+    filePath: safeFilePath,
     libraryId: savedTrack.id,
+    searchQuery: String(savedTrack.title || ''),
+    fallbackAttempted: true,
   };
   const queue = getQueue(guild.id);
   await connectVoice(guild, channel, queue);
@@ -1380,9 +1450,8 @@ async function getDashboardMusicStatus(guildId) {
   if (!queue) return { playing: false, paused: false, position: 0, duration: 0, title: '', channelId: '' };
   const track = queue.current;
   const playing = !!track && (queue.player.state.status === AudioPlayerStatus.Playing || queue.player.state.status === AudioPlayerStatus.Paused);
-  const resource = queue.player.state && queue.player.state.resource;
-  const elapsed = resource && Number.isFinite(resource.playbackDuration)
-    ? Math.max(0, resource.playbackDuration / 1000)
+  const elapsed = queue.lavalinkPlayer
+    ? Math.max(0, Number(queue.lavalinkPlayer.position || queue.lavalinkPosition || 0) / 1000)
     : (track && track.startedAt ? Math.max(0, (Date.now() - track.startedAt) / 1000) : 0);
   const position = track ? Math.max(0, (Number(track.startOffset) || 0) + elapsed) : 0;
   return {
@@ -1631,90 +1700,41 @@ async function handleMusicButton(interaction) {
 
 async function playNext(guildId) {
   const queue = queues.get(guildId);
-  if (!queue || queue.starting || queue.current || !queue.tracks.length || !queue.connection) return;
+  if (!queue || queue.starting || queue.current || !queue.tracks.length || !queue.lavalinkPlayer) return;
 
   queue.starting = true;
   const track = queue.tracks.shift();
   queue.current = track;
-
   try {
-    console.log('Starting track:', track.title);
-    let resource;
+    console.log('Lavalink loading track:', track.title, '| source:', track.source || 'unknown');
     const startAt = Math.max(0, Number(track.startAt) || 0);
     const endAt = Math.max(0, Number(track.endAt) || 0);
-    const audioProcess = await createSeekableAudioProcess(track, startAt, endAt);
-    track.ffmpegProcess = audioProcess;
+    const options = { track: { encoded: track.encoded } };
+    if (startAt > 0) options.position = Math.round(startAt * 1000);
+    if (endAt > startAt) options.endTime = Math.round(endAt * 1000);
+
+    await queue.lavalinkPlayer.playTrack(options);
     track.startedAt = Date.now();
     track.startOffset = startAt;
     track.segmentEnd = endAt;
-    resource = createAudioResource(audioProcess.stdout, {
-      metadata: track,
-      inputType: StreamType.Raw,
-    });
+    queue.lavalinkPosition = startAt * 1000;
+    queue.pendingTrackFailure = null;
+    if (track.resumePaused) {
+      await queue.lavalinkPlayer.setPaused(true);
+      queue.player.state.status = AudioPlayerStatus.Paused;
+    } else {
+      queue.player.state.status = AudioPlayerStatus.Playing;
+    }
 
-    resource.playStream.on('error', error => {
-      console.error('Audio resource stream error:', error.message || error);
-    });
-    queue.player.play(resource);
-    if (track.resumePaused) queue.player.pause(true);
     void setMusicVoiceChannelStatus(queue, '🎵 ' + String(track.title || 'Now Playing'));
     await updateMusicPanel(queue, track);
-    console.log('Audio resource queued:', track.title);
-    console.log('Seekable FFmpeg audio stream linked to Discord audio resource:', track.title);
+    console.log('Lavalink track sent to the audio node:', track.title);
   } catch (error) {
-    console.error('Track failed:', track.title, error.stack || error);
+    console.error('Lavalink track failed to start:', track.title, error.message || error);
     queue.current = null;
-
-    let retryingOnSoundCloud = false;
-
-    if (track.source === 'soundcloud' && Array.isArray(track.alternatives) && track.alternatives.length) {
-      const [nextCandidate, ...remainingCandidates] = track.alternatives;
-      nextCandidate.alternatives = remainingCandidates;
-      nextCandidate.youtubeFallbackAttempted = Boolean(track.youtubeFallbackAttempted);
-      queue.tracks.unshift(nextCandidate);
-      retryingOnSoundCloud = true;
-      console.warn('SoundCloud candidate failed; trying another result:', nextCandidate.title);
-    }
-
-    if (
-      !retryingOnSoundCloud &&
-      track.source === 'soundcloud' &&
-      !track.youtubeFallbackAttempted &&
-      track.searchQuery
-    ) {
-      try {
-        const youtubeFallback = await findYouTubeTrack(track.searchQuery, track.requestedBy);
-        if (youtubeFallback && youtubeFallback.url !== track.url) {
-          youtubeFallback.fallbackAttempted = true;
-          queue.tracks.unshift(youtubeFallback);
-          retryingOnSoundCloud = true;
-          console.warn('SoundCloud results failed; trying YouTube as the final source:', youtubeFallback.title);
-        }
-      } catch (fallbackError) {
-        console.warn('YouTube fallback search failed:', fallbackError.message || fallbackError);
-      }
-    }
-
-    if (!retryingOnSoundCloud && track.source !== 'soundcloud' && !track.fallbackAttempted) {
-      try {
-        const fallback = await findSoundCloudTrack(track.searchQuery || track.title, track.requestedBy);
-        if (fallback && fallback.url !== track.url) {
-          queue.tracks.unshift(fallback);
-          retryingOnSoundCloud = true;
-          console.warn('YouTube playback failed; retrying from SoundCloud:', fallback.title);
-        }
-      } catch (fallbackError) {
-        console.warn('SoundCloud fallback search failed:', fallbackError.message || fallbackError);
-      }
-    }
-
-    if (!retryingOnSoundCloud && queue.textChannelId) {
-      const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
-      if (channel && channel.isTextBased()) {
-        await channel.send('Failed to play "' + track.title.slice(0, 140) + '". Trying the next track.').catch(() => {});
-      }
-    }
-    setTimeout(() => void playNext(guildId), 800);
+    queue.player.state.status = AudioPlayerStatus.Idle;
+    queue.lavalinkPosition = 0;
+    await queueLavalinkFailureFallback(queue, track, error.message || error, guildId);
   } finally {
     queue.starting = false;
   }
@@ -2275,11 +2295,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.stopping = true;
         queue.tracks = [];
         queue.current = null;
+        queue.stopping = true;
+        queue.tracks = [];
+        queue.current = null;
         queue.player.stop(true);
         void setMusicVoiceChannelStatus(queue, null);
-        queue.connection.destroy();
+        await shoukaku.leaveVoiceChannel(interaction.guildId);
         queue.connection = null;
+        queue.lavalinkPlayer = null;
         queue.voiceChannelId = null;
+        queue.player.state.status = AudioPlayerStatus.Idle;
+        queue.lavalinkPosition = 0;
         return respond(interaction, 'Left the voice channel.');
       }
 
