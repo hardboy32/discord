@@ -921,6 +921,37 @@ async function connectVoice(guild, channel, queue) {
 
 const MUSIC_LIBRARY_DIR = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-library');
 
+async function probeLocalAudioDuration(filePath) {
+  if (!ffmpegPath || !filePath || !fs.existsSync(filePath)) return 0;
+  return new Promise(resolve => {
+    let settled = false;
+    let stderr = '';
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { if (!child.killed) child.kill('SIGTERM'); } catch (_) {}
+      resolve(Number.isFinite(value) && value > 0 ? value : 0);
+    };
+    const child = spawn(ffmpegPath, ['-hide_banner', '-i', filePath, '-f', 'null', '-'], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    const timeout = setTimeout(() => finish(0), 10000);
+    child.stderr.on('data', chunk => {
+      stderr = (stderr + chunk.toString()).slice(-12000);
+      const match = stderr.match(/Duration:\\s*(\\d{1,3}):(\\d{2}):(\\d{2}(?:\\.\\d+)?)/i);
+      if (match) finish(Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]));
+    });
+    child.on('error', () => finish(0));
+    child.on('close', () => {
+      if (!settled) {
+        const match = stderr.match(/Duration:\\s*(\\d{1,3}):(\\d{2}):(\\d{2}(?:\\.\\d+)?)/i);
+        finish(match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0);
+      }
+    });
+  });
+}
+
 async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, requestedBy = 'Dashboard') {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('The bot is not connected to the configured Discord server.');
@@ -934,10 +965,12 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
   if (!savedTrack || savedTrack.source !== 'local' || !savedTrack.filePath || !fs.existsSync(savedTrack.filePath)) {
     throw new Error('This saved audio file no longer exists. Refresh the music library.');
   }
+  const durationSeconds = await probeLocalAudioDuration(savedTrack.filePath);
   const track = {
     title: String(savedTrack.title || 'Uploaded audio').slice(0, 180),
     url: 'https://local-library.invalid/' + encodeURIComponent(savedTrack.id || 'audio'),
-    duration: 'Uploaded file',
+    duration: durationSeconds > 0 ? durationText(durationSeconds) : 'Unknown',
+    durationSeconds,
     thumbnail: null,
     requestedBy: requestedBy || 'Dashboard',
     source: 'local',
