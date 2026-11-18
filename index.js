@@ -258,6 +258,54 @@ async function getYtDlpMediaUrl(url) {
   });
 }
 
+async function getYtDlpMediaInfo(url) {
+  await ensureYtDlpReady();
+  const useBgutil = await ensureBgutilReady();
+  const args = ['--dump-single-json', '--no-warnings', '--no-playlist', '--skip-download', '--format', 'bestaudio/best'];
+  const cookiePath = await createYtDlpCookieCopy();
+  addYoutubeExtractorOptions(args, cookiePath, useBgutil);
+  args.push(url);
+  return new Promise((resolve, reject) => {
+    const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 45000);
+    child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-3000); });
+    child.on('error', error => {
+      clearTimeout(timeout);
+      void removeYtDlpCookieCopy(cookiePath);
+      reject(new Error('Could not start yt-dlp: ' + error.message));
+    });
+    child.on('close', code => {
+      clearTimeout(timeout);
+      void removeYtDlpCookieCopy(cookiePath);
+      if (code !== 0 || !stdout.trim()) {
+        const safeError = stderr.replace(/https?:\\/\\/\\S+/g, '[URL omitted]').trim();
+        reject(new Error('Could not resolve media for seeking: ' + (safeError || 'yt-dlp exited with code ' + code)));
+        return;
+      }
+      try {
+        const info = JSON.parse(stdout);
+        const format = Array.isArray(info.formats)
+          ? info.formats.find(item => item && item.url && item.vcodec === 'none' && item.acodec && item.acodec !== 'none')
+            || info.formats.find(item => item && item.url && item.acodec && item.acodec !== 'none')
+          : null;
+        const mediaUrl = (format && format.url) || info.url;
+        const headers = (format && format.http_headers) || info.http_headers || {};
+        if (!mediaUrl || !/^https?:\\/\\//i.test(mediaUrl)) throw new Error('yt-dlp did not return a direct media URL.');
+        const headerText = Object.entries(headers)
+          .filter(([name, value]) => /^[A-Za-z0-9-]+$/.test(name) && value != null && !/[\\r\\n]/.test(String(value)))
+          .map(([name, value]) => name + ': ' + String(value))
+          .join('\\r\\n');
+        resolve({ url: mediaUrl, headers: headerText ? headerText + '\\r\\n' : '' });
+      } catch (error) {
+        reject(new Error('Invalid media information: ' + (error.message || error)));
+      }
+    });
+  });
+}
+
 async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 0) {
   if (!ffmpegPath) throw new Error('FFmpeg is not available on this host.');
   const args = ['-hide_banner', '-loglevel', 'warning'];
@@ -270,14 +318,13 @@ async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 
     if (start > 0) args.push('-ss', String(start));
     args.push('-i', track.filePath);
   } else {
-    // Stream media through yt-dlp instead of handing FFmpeg a bare CDN URL.
-    // This preserves extractor headers/cookies and works with sites that reject
-    // direct FFmpeg requests even when yt-dlp itself can download the media.
-    mediaStream = await createYoutubeStream(track.url);
-    args.push('-i', 'pipe:0');
-    // Input is a non-seekable pipe, so seek after the input and let FFmpeg decode
-    // forward to the requested position.
+    // Resolve the selected media format and its request headers. Passing the
+    // real URL plus headers to FFmpeg allows HTTP range requests, so seeking
+    // does not require downloading/decoding the entire track from the start.
+    const media = await getYtDlpMediaInfo(track.url);
     if (start > 0) args.push('-ss', String(start));
+    if (media.headers) args.push('-headers', media.headers);
+    args.push('-i', media.url);
   }
 
   const end = Math.max(0, Number(endSeconds) || 0);
@@ -940,6 +987,7 @@ async function getDashboardMusicStatus(guildId) {
     segmentEnd: track ? Number(track.segmentEnd || 0) : 0,
     channelId: queue.voiceChannelId || '',
     queueLength: queue.tracks.length,
+    loopMode: queue.loopMode || 'off',
   };
 }
 
@@ -950,6 +998,10 @@ async function controlDashboardMusic(guildId, action, values = {}) {
   if (action === 'pause') {
     if (queue.player.state.status === AudioPlayerStatus.Paused) queue.player.unpause();
     else queue.player.pause(true);
+    return getDashboardMusicStatus(guildId);
+  }
+  if (action === 'loop') {
+    queue.loopMode = queue.loopMode === 'track' ? 'off' : 'track';
     return getDashboardMusicStatus(guildId);
   }
   if (action === 'stop') {
