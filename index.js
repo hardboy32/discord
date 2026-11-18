@@ -39,6 +39,7 @@ function logFfmpegVersion() {
 }
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ActivityType,
   ButtonBuilder,
   ButtonStyle,
@@ -412,6 +413,54 @@ const client = new Client({
 attachCoreModules(client, getDashboardSettings);
 attachCommunityModules(client);
 const queues = new Map();
+const MUSIC_FALLBACK_GIF_URL = (process.env.MUSIC_FALLBACK_GIF_URL || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif').trim();
+const MUSIC_PANEL_STATE_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-panels.json');
+
+function loadMusicPanelState() {
+  try {
+    fs.mkdirSync(path.dirname(MUSIC_PANEL_STATE_FILE), { recursive: true });
+    if (!fs.existsSync(MUSIC_PANEL_STATE_FILE)) return {};
+    const parsed = JSON.parse(fs.readFileSync(MUSIC_PANEL_STATE_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    console.warn('Music panel state could not be loaded:', error.message || error);
+    return {};
+  }
+}
+
+const musicPanelState = loadMusicPanelState();
+
+function saveMusicPanelState() {
+  try {
+    fs.mkdirSync(path.dirname(MUSIC_PANEL_STATE_FILE), { recursive: true });
+    const temporaryFile = MUSIC_PANEL_STATE_FILE + '.tmp';
+    fs.writeFileSync(temporaryFile, JSON.stringify(musicPanelState, null, 2), 'utf8');
+    fs.renameSync(temporaryFile, MUSIC_PANEL_STATE_FILE);
+  } catch (error) {
+    console.warn('Music panel state could not be saved:', error.message || error);
+  }
+}
+
+async function createFallbackGifAttachment() {
+  if (!MUSIC_FALLBACK_GIF_URL || !/^https:\/\//i.test(MUSIC_FALLBACK_GIF_URL)) {
+    throw new Error('MUSIC_FALLBACK_GIF_URL must be a valid HTTPS URL.');
+  }
+  const response = await fetch(MUSIC_FALLBACK_GIF_URL, {
+    signal: AbortSignal.timeout(15000),
+    redirect: 'follow',
+  });
+  if (!response.ok) throw new Error('Fallback GIF download failed (HTTP ' + response.status + ').');
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType && !contentType.includes('image/')) {
+    throw new Error('Fallback artwork URL did not return an image.');
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
+    throw new Error('Fallback GIF is empty or larger than 8 MB.');
+  }
+  return new AttachmentBuilder(buffer, { name: 'music-fallback.gif' });
+}
+
 const aiConversationHistory = new Map();
 const aiCooldowns = new Map();
 let soundCloudInitPromise = null;
@@ -997,6 +1046,11 @@ async function routeDashboardMusicPanel(queue, guild) {
     await queue.nowPlayingMessage.edit({ components: [] }).catch(() => {});
     queue.nowPlayingMessage = null;
   }
+  const savedPanel = musicPanelState[guild.id];
+  if (savedPanel && savedPanel.channelId !== targetChannel.id) {
+    delete musicPanelState[guild.id];
+    saveMusicPanelState();
+  }
   queue.textChannelId = targetChannel.id;
 }
 
@@ -1203,18 +1257,58 @@ async function updateMusicPanel(queue, track) {
   if (!queue.textChannelId || !track) return;
   const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
   if (!channel || !channel.isTextBased()) return;
+
   const payload = buildMusicPanel(queue, track);
+  if (track.thumbnail) {
+    payload.embeds[0].setImage(track.thumbnail).setThumbnail(track.thumbnail);
+  } else {
+    try {
+      const fallbackAttachment = await createFallbackGifAttachment();
+      payload.embeds[0].setImage('attachment://music-fallback.gif').setThumbnail('attachment://music-fallback.gif');
+      payload.files = [fallbackAttachment];
+      console.log('Music panel artwork: uploaded fallback GIF attachment from', MUSIC_FALLBACK_GIF_URL);
+    } catch (error) {
+      console.warn('Could not upload fallback GIF; using the remote image URL:', error.message || error);
+      payload.embeds[0].setImage(MUSIC_FALLBACK_GIF_URL).setThumbnail(MUSIC_FALLBACK_GIF_URL);
+    }
+  }
+
+  const saved = musicPanelState[channel.guildId] || {};
+  if (!queue.nowPlayingMessage) {
+    const savedMessageId = saved.channelId === channel.id ? saved.messageId : null;
+    if (savedMessageId) {
+      queue.nowPlayingMessage = await channel.messages.fetch(savedMessageId).catch(() => null);
+      if (queue.nowPlayingMessage) {
+        console.log('Reconnected to existing music panel after restart:', savedMessageId);
+      } else {
+        console.log('Saved music panel message no longer exists; a new panel will be created.');
+      }
+    }
+  }
+
   try {
-    if (queue.nowPlayingMessage) {
-      await queue.nowPlayingMessage.edit(payload);
+    if (queue.nowPlayingMessage && queue.nowPlayingMessage.channelId === channel.id) {
+      await queue.nowPlayingMessage.edit({ ...payload, attachments: [] });
     } else {
       queue.nowPlayingMessage = await channel.send(payload);
     }
+    musicPanelState[channel.guildId] = {
+      channelId: channel.id,
+      messageId: queue.nowPlayingMessage.id,
+    };
+    saveMusicPanelState();
   } catch (error) {
-    console.warn('Could not update music control panel:', error.message || error);
+    console.warn('Could not update existing music control panel:', error.message || error);
     queue.nowPlayingMessage = null;
-    const retry = await channel.send(payload).catch(() => null);
-    if (retry) queue.nowPlayingMessage = retry;
+    const replacement = await channel.send(payload).catch(sendError => {
+      console.warn('Could not send replacement music control panel:', sendError.message || sendError);
+      return null;
+    });
+    if (replacement) {
+      queue.nowPlayingMessage = replacement;
+      musicPanelState[channel.guildId] = { channelId: channel.id, messageId: replacement.id };
+      saveMusicPanelState();
+    }
   }
 }
 
