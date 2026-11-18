@@ -1209,9 +1209,14 @@ function loopModeLabel(mode) {
 }
 
 function buildMusicPanel(queue, track) {
-  const infoEmbed = new EmbedBuilder()
+  // Both embeds are sent in ONE Discord message:
+  // heading + large artwork first, then track details directly underneath.
+  const artworkEmbed = new EmbedBuilder()
     .setColor(0x5865F2)
-    .setTitle('🎧 NOW PLAYING')
+    .setTitle('🎧 NOW PLAYING');
+
+  const infoEmbed = new EmbedBuilder()
+    .setColor(0x2B2D31)
     .setDescription('**[' + track.title.slice(0, 240) + '](' + track.url + ')**')
     .addFields(
       { name: '⏱️ Duration', value: String(track.duration || 'Unknown'), inline: true },
@@ -1220,9 +1225,6 @@ function buildMusicPanel(queue, track) {
     )
     .setFooter({ text: 'HARD MUSIC PLAYER • Use the controls below' });
 
-  // A separate second embed gives the artwork its own full-width area,
-  // so an uploaded animated GIF appears as the centerpiece of the player.
-  const artworkEmbed = new EmbedBuilder().setColor(0x2B2D31);
   const panelImage = track.thumbnail || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
   artworkEmbed.setImage(panelImage);
   console.log('Music panel artwork:', track.thumbnail ? 'track thumbnail' : 'fallback GIF', panelImage);
@@ -1255,7 +1257,7 @@ function buildMusicPanel(queue, track) {
       .setEmoji('📜')
       .setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [infoEmbed, artworkEmbed], components: [row] };
+  return { embeds: [artworkEmbed, infoEmbed], components: [row] };
 }
 
 async function updateMusicPanel(queue, track) {
@@ -1264,7 +1266,7 @@ async function updateMusicPanel(queue, track) {
   if (!channel || !channel.isTextBased()) return;
 
   const payload = buildMusicPanel(queue, track);
-  const artworkEmbed = payload.embeds[1];
+  const artworkEmbed = payload.embeds[0];
   const musicSettings = getDashboardSettings(channel.guildId).music || {};
   const forceUploadedArtwork = musicSettings.artworkMode === 'force';
   if (track.thumbnail && !forceUploadedArtwork) {
