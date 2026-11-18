@@ -187,9 +187,24 @@ h2{font-size:19px;margin:0 0 16px}
 .command p{margin:5px 0 0;color:var(--muted);font-size:13px}
 .formrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .login{max-width:500px;margin:12vh auto;padding:30px}
+h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
+.top .muted{line-height:1.5}
+.actions>span{min-width:0;max-width:100%;overflow-wrap:anywhere;line-height:1.5}
+.field input,.field select,.field textarea{min-width:0}
+.preview img{height:auto}
+
 @media(max-width:1050px){
   .shell{grid-template-columns:220px minmax(0,1fr)}
   main{padding:24px}
+}
+@media(max-width:480px){
+  main{padding:14px}
+  .panel{padding:17px;border-radius:14px}
+  h1{font-size:25px}
+  h2{font-size:17px}
+  .actions{align-items:stretch}
+  .actions>button{flex:1 1 auto}
+  .actions>span{flex:1 1 100%}
 }
 @media(max-width:800px){
   .shell{grid-template-columns:minmax(0,1fr)}
