@@ -961,9 +961,20 @@ async function playNext(guildId) {
 
     if (track.source === 'local' && track.filePath) {
       if (!fs.existsSync(track.filePath)) throw new Error('Saved audio file is missing.');
-      resource = createAudioResource(fs.createReadStream(track.filePath), {
+      const localAudioProcess = spawn(ffmpegPath, [
+        '-hide_banner', '-loglevel', 'error', '-i', track.filePath,
+        '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let localAudioError = '';
+      localAudioProcess.stderr.on('data', chunk => { localAudioError = (localAudioError + chunk.toString()).slice(-2000); });
+      localAudioProcess.on('error', error => console.error('Uploaded audio FFmpeg process error:', error.message || error));
+      localAudioProcess.on('close', code => {
+        if (code !== 0) console.error('Uploaded audio decode failed:', localAudioError || 'FFmpeg exit code ' + code);
+      });
+      track.ffmpegProcess = localAudioProcess;
+      resource = createAudioResource(localAudioProcess.stdout, {
         metadata: track,
-        inputType: StreamType.Arbitrary,
+        inputType: StreamType.Raw,
       });
     } else if (track.source === 'soundcloud' && track.soundCloudInfo) {
       // Explicitly decode SoundCloud AAC HLS to PCM so FFmpeg diagnostics
