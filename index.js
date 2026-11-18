@@ -52,6 +52,7 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
 } = require('discord.js');
 const {
   AudioPlayerStatus,
@@ -1351,6 +1352,127 @@ async function findYouTubeTrack(query, requestedBy) {
   };
 }
 
+const pendingMusicSelections = new Map();
+
+async function searchTrackCandidates(query, requestedBy) {
+  const input = String(query || '').trim();
+  if (!input) throw new Error('Enter a song name.');
+  if (/^https?:\\/\\//i.test(input)) {
+    const tracks = await resolveLavalinkTracks(input, requestedBy, input, '');
+    return tracks.slice(0, 1);
+  }
+
+  const candidates = [];
+  const seen = new Set();
+  for (const [source, prefix] of [['youtube', 'ytsearch:'], ['soundcloud', 'scsearch:']]) {
+    try {
+      const found = await resolveLavalinkTracks(prefix + input, requestedBy, input, source);
+      for (const track of found) {
+        const key = (track.source + ':' + (track.identifier || track.url || track.title)).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push(track);
+        if (candidates.length >= 10) break;
+      }
+    } catch (error) {
+      console.warn('Music candidate search failed on ' + source + ':', error.message || error);
+    }
+    if (candidates.length >= 10) break;
+  }
+  return candidates.slice(0, 10);
+}
+
+async function enqueueSelectedTrack(message, track) {
+  const member = await message.guild.members.fetch(message.author.id);
+  if (!member.voice.channel) return { error: 'Join a voice channel first, then choose a song.' };
+  const queue = getQueue(message.guildId);
+  await connectVoice(message.guild, member.voice.channel, queue);
+  queue.textChannelId = message.channelId;
+  const position = queue.tracks.length + (queue.current ? 1 : 0);
+  queue.tracks.push(track);
+  if (!queue.current) void playNext(message.guildId);
+  return { track, position: position + 1 };
+}
+
+async function sendMusicSearchChoices(message, query) {
+  const candidates = await searchTrackCandidates(query, message.author.tag || message.author.username);
+  if (!candidates.length) {
+    await message.reply({ content: 'No matching songs were found. Try adding the artist name or send a direct link.', allowedMentions: { repliedUser: false } });
+    return;
+  }
+  const selectionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  pendingMusicSelections.set(selectionId, {
+    userId: message.author.id,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    candidates,
+    expiresAt: Date.now() + 60_000,
+  });
+  const options = candidates.slice(0, 25).map((track, index) => ({
+    label: String(track.title || 'Unknown track').replace(/\\s+/g, ' ').slice(0, 100),
+    description: (String(track.source || 'music') + ' • ' + String(track.duration || 'Unknown duration')).slice(0, 100),
+    value: String(index),
+  }));
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('music-search:' + selectionId)
+    .setPlaceholder('Choose the exact song you want')
+    .addOptions(options);
+  const reply = await message.reply({
+    content: '🎵 I found these matches for **' + query.slice(0, 160) + '**. Choose the correct song within 60 seconds:',
+    components: [new ActionRowBuilder().addComponents(menu)],
+    allowedMentions: { repliedUser: false },
+  });
+  const timer = setTimeout(() => {
+    const pending = pendingMusicSelections.get(selectionId);
+    if (pending && pending.expiresAt <= Date.now()) {
+      pendingMusicSelections.delete(selectionId);
+      void reply.edit({ content: '⌛ Song selection expired. Send the request again to search.', components: [] }).catch(() => {});
+    }
+  }, 60_000);
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
+async function handleMusicSearchSelection(interaction) {
+  const selectionId = interaction.customId.slice('music-search:'.length);
+  const pending = pendingMusicSelections.get(selectionId);
+  if (!pending || pending.expiresAt <= Date.now()) {
+    pendingMusicSelections.delete(selectionId);
+    await interaction.reply({ content: 'This song selection has expired. Send your request again.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (interaction.user.id !== pending.userId) {
+    await interaction.reply({ content: 'Only the person who requested these songs can choose one.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (interaction.guildId !== pending.guildId || interaction.channelId !== pending.channelId) {
+    await interaction.reply({ content: 'This selection belongs to another channel.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const index = Number(interaction.values[0]);
+  const track = Number.isInteger(index) ? pending.candidates[index] : null;
+  if (!track) {
+    await interaction.reply({ content: 'That result is no longer available. Search again.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferUpdate();
+  pendingMusicSelections.delete(selectionId);
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  if (!member.voice.channel) {
+    await interaction.message.edit({ content: 'Join a voice channel first, then send the request again.', components: [] }).catch(() => {});
+    return;
+  }
+  const queue = getQueue(interaction.guildId);
+  await connectVoice(interaction.guild, member.voice.channel, queue);
+  queue.textChannelId = interaction.channelId;
+  const position = queue.tracks.length + (queue.current ? 1 : 0);
+  queue.tracks.push(track);
+  if (!queue.current) void playNext(interaction.guildId);
+  await interaction.message.edit({
+    content: '🎵 Selected **' + track.title.slice(0, 160) + '** and added it to the queue. Position: ' + (position + 1) + '.',
+    components: [],
+  }).catch(() => {});
+}
+
 async function findTrack(query, requestedBy) {
   const input = String(query || '').trim();
   if (!input) throw new Error('Enter a song name or a YouTube / SoundCloud link.');
@@ -2157,21 +2279,7 @@ client.on(Events.MessageCreate, async (message) => {
       } catch (cleanupError) {
         console.warn('Could not remove previous music request messages. Check Manage Messages permission:', cleanupError.message || cleanupError);
       }
-      const result = await enqueueTrackFromMessage(message, query);
-      if (result.error) {
-        await message.reply({ content: result.error, allowedMentions: { repliedUser: false } }).catch(() => {});
-        return;
-      }
-      const confirmationMessage = await message.reply({
-        content: '🎵 Added **' + result.track.title.slice(0, 160) + '** to the queue. Position: ' + result.position + '.',
-        allowedMentions: { repliedUser: false },
-      }).catch(() => null);
-      if (confirmationMessage) {
-        const deleteTimer = setTimeout(() => {
-          void confirmationMessage.delete().catch(() => {});
-        }, 5000);
-        if (typeof deleteTimer.unref === 'function') deleteTimer.unref();
-      }
+      await sendMusicSearchChoices(message, query);
     } catch (musicError) {
       console.error('Music request channel failed:', musicError.stack || musicError);
       await message.reply({
@@ -2321,6 +2429,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const payload = { content: 'That action could not be completed. Check the bot permissions and try again.', flags: MessageFlags.Ephemeral };
     if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
     else await interaction.reply(payload).catch(() => {});
+    return;
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('music-search:')) {
+    try {
+      await handleMusicSearchSelection(interaction);
+    } catch (error) {
+      console.error('Music search selection failed:', error.stack || error);
+      const payload = { content: 'Could not add that song. Please send the request again.', flags: MessageFlags.Ephemeral };
+      if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
+      else await interaction.reply(payload).catch(() => {});
+    }
     return;
   }
   if (interaction.isButton() && interaction.customId.startsWith('music:')) {
