@@ -55,8 +55,9 @@ async function handleCoreInteraction(interaction) {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ticket:open').setLabel(String(cfg.buttonLabel || 'Open a ticket').slice(0, 80)).setStyle(ButtonStyle.Primary).setEmoji('🎫')
     );
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await panelChannel.send({ embeds: [embed], components: [row] });
-    await interaction.reply({ content: 'Ticket panel created in ' + panelChannel.toString() + '. Staff: ' + staffRole.toString() + '. Transcripts: ' + transcriptChannel.toString() + (category ? ' Category: ' + category.name : ''), flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'Ticket panel created in ' + panelChannel.toString() + '. Staff: ' + staffRole.toString() + '. Transcripts: ' + transcriptChannel.toString() + (category ? ' Category: ' + category.name : '') });
     return true;
   }
 
