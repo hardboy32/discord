@@ -1,5 +1,6 @@
 
 const {
+  AuditLogEvent,
   ActionRowBuilder,
   AttachmentBuilder,
   ButtonBuilder,
@@ -187,6 +188,7 @@ async function handleCoreInteraction(interaction) {
 function attachCoreModules(client, getSettings) {
   const messageWindows = new Map();
   async function sendLog(guild, eventType, title, description, color = 0x7887ff) {
+    if (!guild || !guild.id) return;
     const config = getSettings(guild.id);
     const logging = config.logging || {};
     const eventSettings = logging.events || {};
@@ -227,16 +229,68 @@ function attachCoreModules(client, getSettings) {
     await message.delete().catch(() => {});
     await sendLog(message.guild, 'automod', 'AutoMod action', message.author.tag + ' (' + message.author.id + ') — ' + reason, 0xe0a04b);
   });
+  client.on(Events.MessageCreate, async message => {
+    if (!message.guild || message.author.bot) return;
+    await sendLog(message.guild, 'messageCreate', 'Message sent',
+      'Member: ' + message.author.tag + ' (' + message.author.id + ')\\nChannel: <#' + message.channelId + '>\\nMessage text is not recorded.');
+  });
   client.on(Events.MessageDelete, async message => {
     if (!message.guild || message.author && message.author.bot) return;
     const author = message.author ? message.author.tag + ' (' + message.author.id + ')' : 'Unknown author';
-    await sendLog(message.guild, 'messageDelete', 'Message deleted', 'Author: ' + author + '\nChannel: <#' + message.channelId + '>\nMessage content was not recorded.', 0xd65b70);
+    await sendLog(message.guild, 'messageDelete', 'Message deleted',
+      'Author: ' + author + '\\nChannel: <#' + message.channelId + '>\\nMessage content was not recorded.', 0xd65b70);
   });
   client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guild || newMessage.author && newMessage.author.bot || oldMessage.content === newMessage.content) return;
     const author = newMessage.author ? newMessage.author.tag + ' (' + newMessage.author.id + ')' : 'Unknown author';
-    await sendLog(newMessage.guild, 'messageEdit', 'Message edited', 'Author: ' + author + '\nChannel: <#' + newMessage.channelId + '>\nMessage content was not recorded.', 0xd69a4b);
+    await sendLog(newMessage.guild, 'messageEdit', 'Message edited',
+      'Author: ' + author + '\\nChannel: <#' + newMessage.channelId + '>\\nMessage content was not recorded.', 0xd69a4b);
   });
+  client.on(Events.MessageDeleteBulk, async (messages, channel) => {
+    const guild = channel && channel.guild || messages.first()?.guild;
+    if (!guild) return;
+    await sendLog(guild, 'messageDeleteBulk', 'Messages deleted in bulk',
+      'Channel: <#' + channel.id + '>\\nMessages removed: ' + messages.size, 0xd65b70);
+  });
+  client.on(Events.ChannelPinsUpdate, async (channel) => {
+    if (!channel.guild) return;
+    await sendLog(channel.guild, 'messagePin', 'Pinned messages changed',
+      'Channel: <#' + channel.id + '>');
+  });
+  client.on('messageReactionAdd', async (reaction, user) => {
+    const message = reaction && reaction.message;
+    if (!message || !message.guild || !user || user.bot) return;
+    await sendLog(message.guild, 'messageReactionAdd', 'Reaction added',
+      'Member: ' + (user.tag || user.username || user.id) + '\\nChannel: <#' + message.channelId + '>\\nEmoji: ' + String(reaction.emoji));
+  });
+  client.on('messageReactionRemove', async (reaction, user) => {
+    const message = reaction && reaction.message;
+    if (!message || !message.guild || !user || user.bot) return;
+    await sendLog(message.guild, 'messageReactionRemove', 'Reaction removed',
+      'Member: ' + (user.tag || user.username || user.id) + '\\nChannel: <#' + message.channelId + '>\\nEmoji: ' + String(reaction.emoji));
+  });
+  client.on('messageReactionRemoveAll', async message => {
+    if (!message.guild) return;
+    await sendLog(message.guild, 'messageReactionClear', 'All reactions removed',
+      'Channel: <#' + message.channelId + '>\\nMessage: ' + message.id, 0xd69a4b);
+  });
+  client.on('messageReactionRemoveEmoji', async reaction => {
+    const message = reaction && reaction.message;
+    if (!message || !message.guild) return;
+    await sendLog(message.guild, 'messageReactionClear', 'Emoji reactions cleared',
+      'Channel: <#' + message.channelId + '>\\nEmoji: ' + String(reaction.emoji), 0xd69a4b);
+  });
+  client.on('messagePollVoteAdd', async (pollAnswer, userId, message) => {
+    if (!message || !message.guild) return;
+    await sendLog(message.guild, 'pollVoteAdd', 'Poll vote added',
+      'Member ID: ' + userId + '\\nChannel: <#' + message.channelId + '>\\nAnswer ID: ' + (pollAnswer && pollAnswer.id));
+  });
+  client.on('messagePollVoteRemove', async (pollAnswer, userId, message) => {
+    if (!message || !message.guild) return;
+    await sendLog(message.guild, 'pollVoteRemove', 'Poll vote removed',
+      'Member ID: ' + userId + '\\nChannel: <#' + message.channelId + '>\\nAnswer ID: ' + (pollAnswer && pollAnswer.id));
+  });
+
   client.on(Events.GuildMemberAdd, async member => {
     const config = getSettings(member.guild.id);
     const autorole = config.autorole || {};
@@ -244,28 +298,212 @@ function attachCoreModules(client, getSettings) {
       const role = member.guild.roles.cache.get(autorole.roleId) || await member.guild.roles.fetch(autorole.roleId).catch(() => null);
       if (role && role.editable) await member.roles.add(role, 'Configured automatic member role').catch(error => console.warn('Auto-role assignment failed:', error.message || error));
     }
-    await sendLog(member.guild, 'memberJoin', 'Member joined', member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
+    await sendLog(member.guild, 'memberJoin', 'Member joined',
+      member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
   });
   client.on(Events.GuildMemberRemove, async member => {
+    await sendLog(member.guild, 'memberLeave', 'Member left',
+      member.user.tag + ' (' + member.id + ') left the server.', 0xd69a4b);
     const config = getSettings(member.guild.id);
-    await sendLog(member.guild, 'memberLeave', 'Member left', member.user.tag + ' (' + member.id + ') left the server.', 0xd69a4b);
     const goodbye = config.goodbye || {};
     if (!goodbye.enabled || !goodbye.channelId) return;
     const channel = member.guild.channels.cache.get(goodbye.channelId) ||
       await member.guild.channels.fetch(goodbye.channelId).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
     const text = String(goodbye.message || 'Goodbye {user}! We will miss you.')
-      .replace(/\{user\}/g, member.user.username).replace(/\{username\}/g, member.user.username)
-      .replace(/\{server\}/g, member.guild.name).replace(/\{count\}/g, String(member.guild.memberCount || 0));
+      .replace(/\\{user\\}/g, member.user.username).replace(/\\{username\\}/g, member.user.username)
+      .replace(/\\{server\\}/g, member.guild.name).replace(/\\{count\\}/g, String(member.guild.memberCount || 0));
     await channel.send({ content: text, allowedMentions: { parse: [] } })
       .catch(error => console.warn('Goodbye message failed:', error.message || error));
   });
-  client.on(Events.GuildBanAdd, async ban => sendLog(ban.guild, 'memberBan', 'Member banned', ban.user.tag + ' (' + ban.user.id + ') was banned.', 0xd65b70));
-  client.on(Events.GuildBanRemove, async ban => sendLog(ban.guild, 'memberUnban', 'Member unbanned', ban.user.tag + ' (' + ban.user.id + ') was unbanned.', 0x55bd91));
-  client.on(Events.ChannelCreate, async channel => { if (channel.guild) await sendLog(channel.guild, 'channelCreate', 'Channel created', '#' + channel.name + ' (' + channel.id + ') was created.'); });
-  client.on(Events.ChannelDelete, async channel => { if (channel.guild) await sendLog(channel.guild, 'channelDelete', 'Channel deleted', '#' + channel.name + ' (' + channel.id + ') was deleted.', 0xd65b70); });
+  client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+    const identity = (newMember.user && newMember.user.tag || newMember.id) + ' (' + newMember.id + ')';
+    if (oldMember.nickname !== newMember.nickname) {
+      await sendLog(newMember.guild, 'memberNicknameUpdate', 'Member nickname changed',
+        identity + '\\nBefore: ' + (oldMember.nickname || 'none') + '\\nAfter: ' + (newMember.nickname || 'none'));
+    }
+    const oldRoles = oldMember.roles.cache;
+    const newRoles = newMember.roles.cache;
+    const addedRoles = newRoles.filter(role => !oldRoles.has(role.id));
+    const removedRoles = oldRoles.filter(role => !newRoles.has(role.id));
+    if (addedRoles.size || removedRoles.size) {
+      const added = addedRoles.map(role => role.name).slice(0, 12);
+      const removed = removedRoles.map(role => role.name).slice(0, 12);
+      await sendLog(newMember.guild, 'memberRolesUpdate', 'Member roles changed',
+        identity + '\\nAdded: ' + (added.join(', ') || 'none') + '\\nRemoved: ' + (removed.join(', ') || 'none'));
+    }
+    if (oldMember.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
+      const until = newMember.communicationDisabledUntilTimestamp;
+      await sendLog(newMember.guild, 'memberTimeoutUpdate', until ? 'Member timed out' : 'Member timeout removed',
+        identity + '\\n' + (until ? 'Until: ' + new Date(until).toISOString() : 'Timeout is no longer active.'), until ? 0xd69a4b : 0x55bd91);
+    }
+    if (oldMember.premiumSinceTimestamp !== newMember.premiumSinceTimestamp) {
+      await sendLog(newMember.guild, 'memberBoost', newMember.premiumSinceTimestamp ? 'Member started boosting' : 'Member stopped boosting',
+        identity, newMember.premiumSinceTimestamp ? 0x55bd91 : 0xd69a4b);
+    }
+    if (oldMember.avatar !== newMember.avatar) {
+      await sendLog(newMember.guild, 'memberAvatarUpdate', 'Server profile avatar changed', identity);
+    }
+  });
+  client.on(Events.GuildBanAdd, async ban => sendLog(ban.guild, 'memberBan', 'Member banned',
+    ban.user.tag + ' (' + ban.user.id + ') was banned.', 0xd65b70));
+  client.on(Events.GuildBanRemove, async ban => sendLog(ban.guild, 'memberUnban', 'Member unbanned',
+    ban.user.tag + ' (' + ban.user.id + ') was unbanned.', 0x55bd91));
+
+  client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+    const guild = newState.guild || oldState.guild;
+    const member = newState.member || oldState.member;
+    if (!guild || !member || member.user && member.user.bot) return;
+    const name = member.user && (member.user.tag || member.user.username) || member.id;
+    const channelMention = id => id ? '<#' + id + '>' : 'none';
+    if (oldState.channelId !== newState.channelId) {
+      if (!oldState.channelId && newState.channelId) {
+        await sendLog(guild, 'voiceJoin', 'Member joined a voice channel', name + '\\nChannel: ' + channelMention(newState.channelId), 0x55bd91);
+      } else if (oldState.channelId && !newState.channelId) {
+        await sendLog(guild, 'voiceLeave', 'Member left a voice channel', name + '\\nChannel: ' + channelMention(oldState.channelId), 0xd69a4b);
+      } else if (oldState.channelId && newState.channelId) {
+        await sendLog(guild, 'voiceMove', 'Member moved voice channels', name + '\\nFrom: ' + channelMention(oldState.channelId) + '\\nTo: ' + channelMention(newState.channelId));
+      }
+    }
+    if (oldState.serverMute !== newState.serverMute || oldState.selfMute !== newState.selfMute) {
+      await sendLog(guild, 'voiceMute', newState.serverMute || newState.selfMute ? 'Member muted' : 'Member unmuted',
+        name + '\\nChannel: ' + channelMention(newState.channelId || oldState.channelId));
+    }
+    if (oldState.serverDeaf !== newState.serverDeaf || oldState.selfDeaf !== newState.selfDeaf) {
+      await sendLog(guild, 'voiceDeafen', newState.serverDeaf || newState.selfDeaf ? 'Member deafened' : 'Member undeafened',
+        name + '\\nChannel: ' + channelMention(newState.channelId || oldState.channelId));
+    }
+    if (oldState.selfVideo !== newState.selfVideo) {
+      await sendLog(guild, 'voiceVideo', newState.selfVideo ? 'Member enabled camera' : 'Member disabled camera',
+        name + '\\nChannel: ' + channelMention(newState.channelId || oldState.channelId));
+    }
+    if (oldState.streaming !== newState.streaming) {
+      await sendLog(guild, 'voiceStream', newState.streaming ? 'Member started streaming' : 'Member stopped streaming',
+        name + '\\nChannel: ' + channelMention(newState.channelId || oldState.channelId));
+    }
+    if (oldState.suppress !== newState.suppress) {
+      await sendLog(guild, 'voiceStage', newState.suppress ? 'Member became an audience member' : 'Member became a stage speaker',
+        name + '\\nChannel: ' + channelMention(newState.channelId || oldState.channelId));
+    }
+  });
+
+  client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
+    const changes = [];
+    for (const [key, label] of [['name', 'Name'], ['description', 'Description'], ['verificationLevel', 'Verification level'], ['explicitContentFilter', 'Explicit content filter'], ['defaultMessageNotifications', 'Default notifications'], ['preferredLocale', 'Preferred language']]) {
+      if (oldGuild[key] !== newGuild[key]) changes.push(label + ': ' + String(oldGuild[key] || 'none') + ' → ' + String(newGuild[key] || 'none'));
+    }
+    if (oldGuild.icon !== newGuild.icon) changes.push('Server icon changed');
+    if (oldGuild.banner !== newGuild.banner) changes.push('Server banner changed');
+    if (oldGuild.splash !== newGuild.splash) changes.push('Invite splash changed');
+    if (changes.length) await sendLog(newGuild, 'guildUpdate', 'Server settings changed', changes.join('\\n'));
+  });
+  client.on(Events.ChannelCreate, async channel => {
+    if (channel.guild) await sendLog(channel.guild, 'channelCreate', 'Channel created', '#' + channel.name + ' (' + channel.id + ') was created.');
+  });
+  client.on(Events.ChannelDelete, async channel => {
+    if (channel.guild) await sendLog(channel.guild, 'channelDelete', 'Channel deleted', '#' + channel.name + ' (' + channel.id + ') was deleted.', 0xd65b70);
+  });
+  client.on(Events.ChannelUpdate, async (oldChannel, newChannel) => {
+    if (!newChannel.guild) return;
+    const changes = [];
+    for (const [key, label] of [['name', 'Name'], ['topic', 'Topic'], ['nsfw', 'NSFW'], ['rateLimitPerUser', 'Slowmode'], ['bitrate', 'Bitrate'], ['userLimit', 'User limit'], ['parentId', 'Category']]) {
+      if (oldChannel[key] !== newChannel[key]) changes.push(label + ' changed');
+    }
+    if (changes.length) await sendLog(newChannel.guild, 'channelUpdate', 'Channel settings changed',
+      '#' + newChannel.name + ' (' + newChannel.id + ')\\n' + changes.join(', '));
+  });
   client.on(Events.GuildRoleCreate, async role => sendLog(role.guild, 'roleCreate', 'Role created', role.name + ' (' + role.id + ') was created.'));
   client.on(Events.GuildRoleDelete, async role => sendLog(role.guild, 'roleDelete', 'Role deleted', role.name + ' (' + role.id + ') was deleted.', 0xd65b70));
+  client.on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
+    const changes = [];
+    for (const [key, label] of [['name', 'Name'], ['color', 'Color'], ['hoist', 'Displayed separately'], ['mentionable', 'Mentionable'], ['unicodeEmoji', 'Emoji']]) {
+      if (oldRole[key] !== newRole[key]) changes.push(label + ' changed');
+    }
+    if (!oldRole.permissions.equals(newRole.permissions)) changes.push('Permissions changed');
+    if (changes.length) await sendLog(newRole.guild, 'roleUpdate', 'Role updated',
+      newRole.name + ' (' + newRole.id + ')\\n' + changes.join(', '));
+  });
+
+  client.on(Events.ThreadCreate, async thread => {
+    if (thread.guild) await sendLog(thread.guild, 'threadCreate', 'Thread created',
+      thread.name + ' in <#' + thread.parentId + '>');
+  });
+  client.on(Events.ThreadUpdate, async (oldThread, newThread) => {
+    if (newThread.guild && (oldThread.name !== newThread.name || oldThread.archived !== newThread.archived || oldThread.locked !== newThread.locked)) {
+      await sendLog(newThread.guild, 'threadUpdate', 'Thread updated', newThread.name + ' in <#' + newThread.parentId + '>');
+    }
+  });
+  client.on(Events.ThreadDelete, async thread => {
+    if (thread.guild) await sendLog(thread.guild, 'threadDelete', 'Thread deleted', thread.name + ' in <#' + thread.parentId + '>', 0xd65b70);
+  });
+  client.on('threadMembersUpdate', async (thread, addedMembers, removedMembers) => {
+    if (!thread.guild || (!addedMembers.size && !removedMembers.size)) return;
+    await sendLog(thread.guild, 'threadMembersUpdate', 'Thread members changed',
+      thread.name + '\\nAdded: ' + addedMembers.size + ' • Removed: ' + removedMembers.size);
+  });
+
+  client.on(Events.GuildEmojisUpdate, async guild => sendLog(guild, 'emojiUpdate', 'Server emojis changed',
+    'The server emoji list was updated.'));
+  client.on(Events.GuildStickersUpdate, async guild => sendLog(guild, 'stickerUpdate', 'Server stickers changed',
+    'The server sticker list was updated.'));
+  client.on('guildSoundboardSoundCreate', async sound => sendLog(sound.guild, 'soundboardCreate', 'Soundboard sound created', sound.name + ' (' + sound.id + ')'));
+  client.on('guildSoundboardSoundUpdate', async (oldSound, newSound) => sendLog(newSound.guild, 'soundboardUpdate', 'Soundboard sound updated', newSound.name + ' (' + newSound.id + ')'));
+  client.on('guildSoundboardSoundDelete', async sound => sendLog(sound.guild, 'soundboardDelete', 'Soundboard sound deleted', sound.name + ' (' + sound.id + ')', 0xd65b70));
+
+  client.on(Events.InviteCreate, async invite => {
+    if (invite.guild) await sendLog(invite.guild, 'inviteCreate', 'Invite created',
+      'Code: ' + invite.code + '\\nChannel: ' + (invite.channel ? '<#' + invite.channel.id + '>' : 'unknown') + '\\nCreator: ' + (invite.inviter ? invite.inviter.tag : 'unknown'));
+  });
+  client.on(Events.InviteDelete, async invite => {
+    if (invite.guild) await sendLog(invite.guild, 'inviteDelete', 'Invite deleted',
+      'Code: ' + invite.code + '\\nChannel: ' + (invite.channel ? '<#' + invite.channel.id + '>' : 'unknown'), 0xd65b70);
+  });
+  client.on(Events.WebhooksUpdate, async channel => {
+    if (channel.guild) await sendLog(channel.guild, 'webhookUpdate', 'Webhooks changed',
+      'Webhook configuration changed in <#' + channel.id + '>.');
+  });
+  client.on(Events.GuildIntegrationsUpdate, async guild => sendLog(guild, 'integrationUpdate', 'Server integrations changed',
+    'The server integration list was updated.'));
+
+  client.on(Events.GuildScheduledEventCreate, async event => sendLog(event.guild, 'scheduledEventCreate', 'Scheduled event created',
+    event.name + ' (' + event.id + ')'));
+  client.on(Events.GuildScheduledEventUpdate, async (oldEvent, newEvent) => sendLog(newEvent.guild, 'scheduledEventUpdate', 'Scheduled event updated',
+    newEvent.name + ' (' + newEvent.id + ')'));
+  client.on(Events.GuildScheduledEventDelete, async event => sendLog(event.guild, 'scheduledEventDelete', 'Scheduled event deleted',
+    event.name + ' (' + event.id + ')', 0xd65b70));
+  client.on(Events.GuildScheduledEventUserAdd, async (event, user) => sendLog(event.guild, 'scheduledEventUserAdd', 'Member subscribed to scheduled event',
+    event.name + '\\nMember: ' + (user && (user.tag || user.username || user.id) || 'unknown')));
+  client.on(Events.GuildScheduledEventUserRemove, async (event, user) => sendLog(event.guild, 'scheduledEventUserRemove', 'Member unsubscribed from scheduled event',
+    event.name + '\\nMember: ' + (user && (user.tag || user.username || user.id) || 'unknown')));
+
+  client.on(Events.StageInstanceCreate, async stage => sendLog(stage.guild, 'stageInstanceCreate', 'Stage started',
+    stage.topic + ' in <#' + stage.channelId + '>'));
+  client.on(Events.StageInstanceUpdate, async (oldStage, newStage) => sendLog(newStage.guild, 'stageInstanceUpdate', 'Stage updated',
+    newStage.topic + ' in <#' + newStage.channelId + '>'));
+  client.on(Events.StageInstanceDelete, async stage => sendLog(stage.guild, 'stageInstanceDelete', 'Stage ended',
+    stage.topic + ' in <#' + stage.channelId + '>', 0xd69a4b));
+
+  client.on('autoModerationRuleCreate', async rule => sendLog(rule.guild, 'autoModerationRuleCreate', 'AutoMod rule created', rule.name + ' (' + rule.id + ')'));
+  client.on('autoModerationRuleUpdate', async (oldRule, newRule) => sendLog(newRule.guild, 'autoModerationRuleUpdate', 'AutoMod rule updated', newRule.name + ' (' + newRule.id + ')'));
+  client.on('autoModerationRuleDelete', async rule => sendLog(rule.guild, 'autoModerationRuleDelete', 'AutoMod rule deleted', rule.name + ' (' + rule.id + ')', 0xd65b70));
+  client.on('autoModerationActionExecution', async execution => {
+    const guild = execution.guild;
+    if (!guild) return;
+    await sendLog(guild, 'automod', 'AutoMod action executed',
+      'Rule ID: ' + execution.ruleId + '\\nUser ID: ' + execution.userId + '\\nChannel: ' + (execution.channelId ? '<#' + execution.channelId + '>' : 'unknown') + '\\nAction: ' + (execution.action && execution.action.type));
+  });
+
+  client.on('guildAuditLogEntryCreate', async (entry, guild) => {
+    if (!guild) return;
+    const action = AuditLogEvent[entry.action] || String(entry.action);
+    const actor = entry.executor ? (entry.executor.tag || entry.executor.username || entry.executor.id) : (entry.executorId || 'unknown');
+    const target = entry.target ? (entry.target.tag || entry.target.username || entry.target.name || entry.target.id) : (entry.targetId || 'unknown');
+    const changes = Array.isArray(entry.changes) ? entry.changes.slice(0, 8).map(change => change.key).join(', ') : '';
+    await sendLog(guild, 'auditLogEntry', 'Server audit-log action',
+      'Action: ' + action + '\\nBy: ' + actor + '\\nTarget: ' + target +
+      (entry.reason ? '\\nReason: ' + entry.reason : '') +
+      (changes ? '\\nChanged fields: ' + changes : ''), 0xd69a4b);
+  });
   const cleanup = setInterval(() => {
     const cutoff = Date.now() - 60000;
     for (const [key, times] of messageWindows) {
