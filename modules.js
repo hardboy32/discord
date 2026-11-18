@@ -77,7 +77,7 @@ async function handleCoreInteraction(interaction) {
     const setup = setupParts[0] === 'ticket-config' && setupParts.length >= 4
       ? { staffRoleId: setupParts[1], transcriptChannelId: setupParts[2], categoryId: setupParts[3] || null }
       : null;
-    if (!setup || !/^\\d{17,20}$/.test(setup.staffRoleId) || !/^\\d{17,20}$/.test(setup.transcriptChannelId)) {
+    if (!setup || !/^\d{17,20}$/.test(setup.staffRoleId) || !/^\d{17,20}$/.test(setup.transcriptChannelId)) {
       await interaction.editReply({ content: 'This ticket panel is missing its setup information. Please create a new panel with /ticket-setup.' });
       return true;
     }
