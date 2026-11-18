@@ -123,7 +123,8 @@ async function handleCoreInteraction(interaction) {
     const ownerId = (topic.match(/ticket-owner=(\d{17,20})/) || [])[1];
     const staffRoleId = (topic.match(/ticket-staff=(\d{17,20})/) || [])[1];
     const transcriptChannelId = (topic.match(/ticket-transcript=(\d{17,20})/) || [])[1];
-    const isStaff = staffRoleId && interaction.member.roles?.cache?.has(staffRoleId);
+    const closingMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const isStaff = Boolean(staffRoleId && closingMember?.roles.cache.has(staffRoleId));
     if (!ownerId || (!isStaff && interaction.user.id !== ownerId && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels))) {
       await interaction.reply({ content: 'Only the ticket owner or support staff can close this ticket.', flags: MessageFlags.Ephemeral });
       return true;
