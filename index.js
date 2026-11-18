@@ -527,6 +527,23 @@ function getQueue(guildId) {
   return queue;
 }
 
+function durationSecondsFromInfo(info) {
+  if (!info || typeof info !== 'object') return 0;
+  for (const value of [info.duration, info.duration_seconds, info.durationInSec]) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  const milliseconds = Number(info.duration_ms);
+  if (Number.isFinite(milliseconds) && milliseconds > 0) return milliseconds / 1000;
+  const raw = String(info.duration_string || info.durationRaw || '').trim();
+  if (/^\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
+  if (/^\d{1,3}:\d{1,2}(?::\d{1,2})?$/.test(raw)) {
+    const parts = raw.split(':').map(Number);
+    return parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
 function durationText(input) {
   const number = Number(input);
   if (!Number.isFinite(number) || number < 0) return 'Unknown';
@@ -750,7 +767,7 @@ async function findTrack(query, requestedBy) {
           requestedBy,
           searchQuery: video.title || normalizedUrl,
           source: 'ytdlp',
-          durationSeconds: Number(video.duration || 0),
+          durationSeconds: durationSecondsFromInfo(video),
         };
       }
 
@@ -814,7 +831,7 @@ async function findTrack(query, requestedBy) {
         title: sound.name || sound.title || 'SoundCloud track',
         url: sound.permalink || soundCloudUrl,
         duration: durationText(sound.durationInSec || 0),
-        durationSeconds: Number(sound.durationInSec || 0),
+        durationSeconds: durationSecondsFromInfo(sound),
         thumbnail: getTrackThumbnail(sound.artwork_url, sound.thumbnail),
         requestedBy,
         searchQuery: sound.name || sound.title || soundCloudUrl,
@@ -836,7 +853,7 @@ async function findTrack(query, requestedBy) {
       title: mediaInfo.title || hostname + ' audio',
       url: mediaInfo.webpage_url || input,
       duration: durationText(mediaInfo.duration || 0),
-      durationSeconds: Number(mediaInfo.duration || 0),
+      durationSeconds: durationSecondsFromInfo(mediaInfo),
       thumbnail: getTrackThumbnail(mediaInfo.thumbnail, mediaInfo.thumbnails),
       requestedBy,
       searchQuery: mediaInfo.title || input,
