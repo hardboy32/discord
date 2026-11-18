@@ -280,15 +280,19 @@ function attachCoreModules(client, getSettings) {
     await sendLog(message.guild, 'messageReactionClear', 'Emoji reactions cleared',
       'Channel: <#' + message.channelId + '>\nEmoji: ' + String(reaction.emoji), 0xd69a4b);
   });
-  client.on('messagePollVoteAdd', async (pollAnswer, userId, message) => {
+  client.on(Events.MessagePollVoteAdd, async (pollAnswer, userId) => {
+    const message = pollAnswer && pollAnswer.poll && pollAnswer.poll.message;
     if (!message || !message.guild) return;
+    const answer = pollAnswer.text || (pollAnswer.emoji ? String(pollAnswer.emoji) : 'Answer #' + pollAnswer.id);
     await sendLog(message.guild, 'pollVoteAdd', 'Poll vote added',
-      'Member ID: ' + userId + '\nChannel: <#' + message.channelId + '>\nAnswer ID: ' + (pollAnswer && pollAnswer.id));
+      'Member ID: ' + userId + '\nChannel: <#' + message.channelId + '>\nAnswer: ' + answer);
   });
-  client.on('messagePollVoteRemove', async (pollAnswer, userId, message) => {
+  client.on(Events.MessagePollVoteRemove, async (pollAnswer, userId) => {
+    const message = pollAnswer && pollAnswer.poll && pollAnswer.poll.message;
     if (!message || !message.guild) return;
+    const answer = pollAnswer.text || (pollAnswer.emoji ? String(pollAnswer.emoji) : 'Answer #' + pollAnswer.id);
     await sendLog(message.guild, 'pollVoteRemove', 'Poll vote removed',
-      'Member ID: ' + userId + '\nChannel: <#' + message.channelId + '>\nAnswer ID: ' + (pollAnswer && pollAnswer.id));
+      'Member ID: ' + userId + '\nChannel: <#' + message.channelId + '>\nAnswer: ' + answer);
   });
 
   client.on(Events.GuildMemberAdd, async member => {
