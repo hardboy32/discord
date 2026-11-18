@@ -395,7 +395,7 @@ const aiCooldowns = new Map();
 function loadWarnings() {
   try {
     fs.mkdirSync(path.dirname(WARNINGS_FILE), { recursive: true });
-    if (!fs.existsSync(WARNINGS_FILE)) fs.writeFileSync(WARNINGS_FILE, '{}', 'utf8');
+    if (!fs.existsSync(WARNINGS_FILE)) fs.writeFileSync(WARNINGS_FILE, '{}', { encoding: 'utf8', mode: 0o600 });
     const value = JSON.parse(fs.readFileSync(WARNINGS_FILE, 'utf8'));
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   } catch (error) {
