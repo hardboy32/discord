@@ -867,13 +867,23 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   void setMusicVoiceChannelStatus(queue, null, previousChannelId, true);
 
   if (queue && queue.voiceChannelId === previousChannelId) {
+    if (queue.endEventTimer) clearTimeout(queue.endEventTimer);
+    if (queue.playbackWatchdog) clearTimeout(queue.playbackWatchdog);
+    queue.endEventTimer = null;
+    queue.playbackWatchdog = null;
     queue.voiceChannelId = null;
     queue.connection = null;
     queue.lavalinkPlayer = null;
     queue.current = null;
     queue.tracks = [];
+    queue.starting = false;
+    queue.pendingTrackFailure = null;
+    queue.seekInProgress = false;
+    queue.skipCurrent = false;
+    queue.stopping = false;
     queue.player.state.status = AudioPlayerStatus.Idle;
     queue.lavalinkPosition = 0;
+    void markPlaybackFinished(queue);
   }
   logDebug('Bot left voice channel; clearing its previous channel status:', previousChannelId);
 });
@@ -882,6 +892,10 @@ async function connectVoice(guild, channel, queue) {
   if (queue.lavalinkPlayer && queue.voiceChannelId === channel.id &&
       shoukaku.players.has(guild.id)) {
     return queue.lavalinkPlayer;
+  }
+
+  if (queue.current && queue.voiceChannelId && queue.voiceChannelId !== channel.id) {
+    throw new Error('Music is already playing in another voice channel. Use /leave before moving the bot.');
   }
 
   if (queue.voiceChannelId && queue.voiceChannelId !== channel.id) {
@@ -1292,6 +1306,7 @@ async function playNext(guildId) {
 
   queue.starting = true;
   const track = queue.tracks.shift();
+  const player = queue.lavalinkPlayer;
   queue.current = track;
   try {
     logDebug('Lavalink loading track:', track.title, '| source:', track.source || 'unknown');
@@ -1301,14 +1316,17 @@ async function playNext(guildId) {
     if (startAt > 0) options.position = Math.round(startAt * 1000);
     if (endAt > startAt) options.endTime = Math.round(endAt * 1000);
 
-    await queue.lavalinkPlayer.playTrack(options);
+    await player.playTrack(options);
+    // A voice disconnect or channel move may invalidate this async start while
+    // Lavalink is still processing the REST request.
+    if (queue.lavalinkPlayer !== player || queue.current !== track) return;
     track.startedAt = Date.now();
     track.startOffset = startAt;
     track.segmentEnd = endAt;
     queue.lavalinkPosition = startAt * 1000;
     queue.pendingTrackFailure = null;
     if (track.resumePaused) {
-      await queue.lavalinkPlayer.setPaused(true);
+      await player.setPaused(true);
       queue.player.state.status = AudioPlayerStatus.Paused;
     } else {
       queue.player.state.status = AudioPlayerStatus.Playing;
