@@ -62,6 +62,7 @@ const client = new Client({
     GatewayIntentBits.AutoModerationConfiguration,
     GatewayIntentBits.AutoModerationExecution,
     GatewayIntentBits.GuildMessagePolls,
+    ...(String(process.env.ENABLE_PRESENCE_LOGGING || '').toLowerCase() === 'true' ? [GatewayIntentBits.GuildPresences] : []),
     GatewayIntentBits.MessageContent,
   ],
 });
