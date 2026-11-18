@@ -467,6 +467,19 @@ function attachCoreModules(client, getSettings) {
     await sendLog(typing.guild, 'typingStart', 'Member started typing',
       'Member: ' + (typing.user.tag || typing.user.username) + '\nChannel: <#' + typing.channel.id + '>');
   });
+  client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
+    const presence = newPresence || oldPresence;
+    if (!presence || !presence.guild || !presence.user || presence.user.bot) return;
+    const oldStatus = oldPresence && oldPresence.status || 'offline';
+    const newStatus = newPresence && newPresence.status || 'offline';
+    const oldActivities = (oldPresence && oldPresence.activities || []).map(activity => activity.name + (activity.details ? ': ' + activity.details : '')).join(', ') || 'none';
+    const newActivities = (newPresence && newPresence.activities || []).map(activity => activity.name + (activity.details ? ': ' + activity.details : '')).join(', ') || 'none';
+    if (oldStatus === newStatus && oldActivities === newActivities) return;
+    await sendLog(presence.guild, 'presenceUpdate', 'Member status or activity changed',
+      'Member: ' + (presence.user.tag || presence.user.username) + ' (' + presence.user.id + ')' +
+      '\nStatus: ' + oldStatus + ' → ' + newStatus +
+      (oldActivities !== newActivities ? '\nActivity: ' + oldActivities + ' → ' + newActivities : ''));
+  });
   client.on(Events.ApplicationCommandPermissionsUpdate, async update => {
     const guild = client.guilds.cache.get(update.guildId);
     if (!guild) return;
