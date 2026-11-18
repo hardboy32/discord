@@ -975,6 +975,31 @@ async function probeLocalAudioDuration(filePath) {
   });
 }
 
+async function routeDashboardMusicPanel(queue, guild) {
+  const musicSettings = getDashboardSettings(guild.id);
+  const targetChannelId = String(musicSettings && musicSettings.music && musicSettings.music.requestChannelId || '').trim();
+  if (!targetChannelId) return;
+
+  const targetChannel = await guild.channels.fetch(targetChannelId).catch(() => null);
+  if (!targetChannel || !targetChannel.isTextBased()) {
+    console.warn('Dashboard music panel channel is unavailable:', targetChannelId);
+    return;
+  }
+
+  const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+  const permissions = botMember && targetChannel.permissionsFor(botMember);
+  if (!permissions || !permissions.has(PermissionFlagsBits.SendMessages) || !permissions.has(PermissionFlagsBits.EmbedLinks)) {
+    console.warn('The bot needs Send Messages and Embed Links permissions in the selected music request channel:', targetChannel.name);
+    return;
+  }
+
+  if (queue.nowPlayingMessage && queue.nowPlayingMessage.channelId !== targetChannel.id) {
+    await queue.nowPlayingMessage.edit({ components: [] }).catch(() => {});
+    queue.nowPlayingMessage = null;
+  }
+  queue.textChannelId = targetChannel.id;
+}
+
 async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, requestedBy = 'Dashboard') {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('The bot is not connected to the configured Discord server.');
@@ -1002,6 +1027,7 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
   };
   const queue = getQueue(guild.id);
   await connectVoice(guild, channel, queue);
+  await routeDashboardMusicPanel(queue, guild);
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(track);
   if (!queue.current) void playNext(guild.id);
@@ -1035,6 +1061,7 @@ async function playTrackFromDashboard(guildId, voiceChannelId, url, requestedBy 
   const track = await findTrack(input, requestedBy || 'Dashboard');
   const queue = getQueue(guild.id);
   await connectVoice(guild, channel, queue);
+  await routeDashboardMusicPanel(queue, guild);
 
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(track);
