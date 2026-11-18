@@ -186,11 +186,12 @@ async function handleCoreInteraction(interaction) {
 
 function attachCoreModules(client, getSettings) {
   const messageWindows = new Map();
-  async function sendLog(guild, title, description, color = 0x7887ff) {
+  async function sendLog(guild, eventType, title, description, color = 0x7887ff) {
     const config = getSettings(guild.id);
     const logging = config.logging || {};
+    const eventSettings = logging.events || {};
     const channelId = logging.channelId || (config.moderation && config.moderation.logChannelId);
-    if (logging.enabled === false || !channelId) return;
+    if (logging.enabled === false || eventSettings[eventType] === false || !channelId) return;
     const channel = guild.channels.cache.get(channelId) ||
       await guild.channels.fetch(channelId).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
@@ -224,17 +225,17 @@ function attachCoreModules(client, getSettings) {
     if (!reason) return;
     message.__autoModBlocked = true;
     await message.delete().catch(() => {});
-    await sendLog(message.guild, 'AutoMod action', message.author.tag + ' (' + message.author.id + ') — ' + reason, 0xe0a04b);
+    await sendLog(message.guild, 'automod', 'AutoMod action', message.author.tag + ' (' + message.author.id + ') — ' + reason, 0xe0a04b);
   });
   client.on(Events.MessageDelete, async message => {
     if (!message.guild || message.author && message.author.bot) return;
     const author = message.author ? message.author.tag + ' (' + message.author.id + ')' : 'Unknown author';
-    await sendLog(message.guild, 'Message deleted', 'Author: ' + author + '\nChannel: <#' + message.channelId + '>\nMessage content was not recorded.', 0xd65b70);
+    await sendLog(message.guild, 'messageDelete', 'Message deleted', 'Author: ' + author + '\nChannel: <#' + message.channelId + '>\nMessage content was not recorded.', 0xd65b70);
   });
   client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guild || newMessage.author && newMessage.author.bot || oldMessage.content === newMessage.content) return;
     const author = newMessage.author ? newMessage.author.tag + ' (' + newMessage.author.id + ')' : 'Unknown author';
-    await sendLog(newMessage.guild, 'Message edited', 'Author: ' + author + '\nChannel: <#' + newMessage.channelId + '>\nMessage content was not recorded.', 0xd69a4b);
+    await sendLog(newMessage.guild, 'messageEdit', 'Message edited', 'Author: ' + author + '\nChannel: <#' + newMessage.channelId + '>\nMessage content was not recorded.', 0xd69a4b);
   });
   client.on(Events.GuildMemberAdd, async member => {
     const config = getSettings(member.guild.id);
@@ -243,13 +244,11 @@ function attachCoreModules(client, getSettings) {
       const role = member.guild.roles.cache.get(autorole.roleId) || await member.guild.roles.fetch(autorole.roleId).catch(() => null);
       if (role && role.editable) await member.roles.add(role, 'Configured automatic member role').catch(error => console.warn('Auto-role assignment failed:', error.message || error));
     }
-    if (config.logging && config.logging.enabled !== false) {
-      await sendLog(member.guild, 'Member joined', member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
-    }
+    await sendLog(member.guild, 'memberJoin', 'Member joined', member.user.tag + ' (' + member.id + ') joined the server.', 0x55bd91);
   });
   client.on(Events.GuildMemberRemove, async member => {
     const config = getSettings(member.guild.id);
-    await sendLog(member.guild, 'Member left', member.user.tag + ' (' + member.id + ') left the server.', 0xd69a4b);
+    await sendLog(member.guild, 'memberLeave', 'Member left', member.user.tag + ' (' + member.id + ') left the server.', 0xd69a4b);
     const goodbye = config.goodbye || {};
     if (!goodbye.enabled || !goodbye.channelId) return;
     const channel = member.guild.channels.cache.get(goodbye.channelId) ||
@@ -261,12 +260,12 @@ function attachCoreModules(client, getSettings) {
     await channel.send({ content: text, allowedMentions: { parse: [] } })
       .catch(error => console.warn('Goodbye message failed:', error.message || error));
   });
-  client.on(Events.GuildBanAdd, async ban => sendLog(ban.guild, 'Member banned', ban.user.tag + ' (' + ban.user.id + ') was banned.', 0xd65b70));
-  client.on(Events.GuildBanRemove, async ban => sendLog(ban.guild, 'Member unbanned', ban.user.tag + ' (' + ban.user.id + ') was unbanned.', 0x55bd91));
-  client.on(Events.ChannelCreate, async channel => { if (channel.guild) await sendLog(channel.guild, 'Channel created', '#' + channel.name + ' (' + channel.id + ') was created.'); });
-  client.on(Events.ChannelDelete, async channel => { if (channel.guild) await sendLog(channel.guild, 'Channel deleted', '#' + channel.name + ' (' + channel.id + ') was deleted.', 0xd65b70); });
-  client.on(Events.GuildRoleCreate, async role => sendLog(role.guild, 'Role created', role.name + ' (' + role.id + ') was created.'));
-  client.on(Events.GuildRoleDelete, async role => sendLog(role.guild, 'Role deleted', role.name + ' (' + role.id + ') was deleted.', 0xd65b70));
+  client.on(Events.GuildBanAdd, async ban => sendLog(ban.guild, 'memberBan', 'Member banned', ban.user.tag + ' (' + ban.user.id + ') was banned.', 0xd65b70));
+  client.on(Events.GuildBanRemove, async ban => sendLog(ban.guild, 'memberUnban', 'Member unbanned', ban.user.tag + ' (' + ban.user.id + ') was unbanned.', 0x55bd91));
+  client.on(Events.ChannelCreate, async channel => { if (channel.guild) await sendLog(channel.guild, 'channelCreate', 'Channel created', '#' + channel.name + ' (' + channel.id + ') was created.'); });
+  client.on(Events.ChannelDelete, async channel => { if (channel.guild) await sendLog(channel.guild, 'channelDelete', 'Channel deleted', '#' + channel.name + ' (' + channel.id + ') was deleted.', 0xd65b70); });
+  client.on(Events.GuildRoleCreate, async role => sendLog(role.guild, 'roleCreate', 'Role created', role.name + ' (' + role.id + ') was created.'));
+  client.on(Events.GuildRoleDelete, async role => sendLog(role.guild, 'roleDelete', 'Role deleted', role.name + ' (' + role.id + ') was deleted.', 0xd65b70));
   const cleanup = setInterval(() => {
     const cutoff = Date.now() - 60000;
     for (const [key, times] of messageWindows) {
