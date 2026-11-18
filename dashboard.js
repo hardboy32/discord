@@ -82,7 +82,9 @@ function sign(value) {
 function cookieValue(req, name) {
   const raw = req.headers.cookie || '';
   const item = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
-  return item ? decodeURIComponent(item.slice(name.length + 1)) : '';
+  if (!item) return '';
+  try { return decodeURIComponent(item.slice(name.length + 1)); }
+  catch { return ''; }
 }
 function getSession(req) {
   const token = cookieValue(req, 'hb_session');
@@ -209,10 +211,49 @@ const TERMS_OF_SERVICE_HTML = `
 `;
 function readBody(req, limit = 20000) {
   return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', chunk => { data += chunk; if (data.length > limit) reject(new Error('Request too large')); });
-    req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch { reject(new Error('Invalid JSON')); } });
-    req.on('error', reject);
+    const chunks = [];
+    let totalBytes = 0;
+    let settled = false;
+    let tooLarge = false;
+
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    req.on('data', chunk => {
+      if (tooLarge || settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
+      if (totalBytes > limit) {
+        tooLarge = true;
+        const error = new Error('Request too large');
+        error.status = 413;
+        fail(error);
+        return;
+      }
+      chunks.push(buffer);
+    });
+
+    req.on('end', () => {
+      if (settled || tooLarge) return;
+      try {
+        const body = Buffer.concat(chunks).toString('utf8');
+        settled = true;
+        resolve(JSON.parse(body || '{}'));
+      } catch {
+        const error = new Error('Invalid JSON');
+        error.status = 400;
+        fail(error);
+      }
+    });
+    req.on('error', fail);
+    req.on('aborted', () => {
+      const error = new Error('Request aborted');
+      error.status = 400;
+      fail(error);
+    });
   });
 }
 async function discord(pathname, token) {
@@ -535,8 +576,17 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
       if (req.method === 'GET' && url.pathname === '/terms') return send(res, 200, legalPage('Terms of Service', 'November 18, 2026', TERMS_OF_SERVICE_HTML), 'text/html; charset=utf-8');
       if (req.method === 'GET' && url.pathname === '/') return send(res, 200, html(), 'text/html; charset=utf-8');
       if (req.method === 'GET' && url.pathname === '/auth/login') {
+        const now = Date.now();
+        for (const [savedState, expiresAt] of states) {
+          if (expiresAt <= now) states.delete(savedState);
+        }
+        while (states.size >= 1000) {
+          const oldestState = states.keys().next().value;
+          if (!oldestState) break;
+          states.delete(oldestState);
+        }
         const state = crypto.randomBytes(24).toString('hex');
-        states.set(state, Date.now() + 300000);
+        states.set(state, now + 300000);
         const target = new URL('https://discord.com/oauth2/authorize');
         target.searchParams.set('client_id', CLIENT_ID);
         target.searchParams.set('redirect_uri', REDIRECT_URI);
@@ -562,6 +612,30 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         saveSessions();
         return res.writeHead(302, { location: '/', 'set-cookie': 'hb_session=' + encodeURIComponent(sid + '.' + sign(sid)) + '; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000' }).end();
       }
+      if (req.method === 'GET' && url.pathname === '/welcome-preview') {
+        const session = getSession(req);
+        if (!session || session.guildId !== GUILD_ID || !settings.welcome.imagePath) {
+          return send(res, 404, 'Not found', 'text/plain');
+        }
+        const actor = await client.guilds.cache.get(GUILD_ID)?.members.fetch(session.user.id).catch(() => null);
+        if (!actor || (!actor.permissions.has('Administrator') && !actor.permissions.has('ManageGuild'))) {
+          return send(res, 404, 'Not found', 'text/plain');
+        }
+        const imageRoot = path.resolve(path.dirname(SETTINGS_FILE), 'welcome-assets') + path.sep;
+        const imagePath = path.resolve(settings.welcome.imagePath);
+        if (!imagePath.startsWith(imageRoot) || !fs.existsSync(imagePath) || !fs.statSync(imagePath).isFile()) {
+          return send(res, 404, 'Not found', 'text/plain');
+        }
+        const types = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
+        const type = types[path.extname(imagePath).toLowerCase()];
+        if (!type) return send(res, 404, 'Not found', 'text/plain');
+        res.writeHead(200, {
+          'content-type': type,
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        });
+        return fs.createReadStream(imagePath).pipe(res);
+      }
       if (req.method === 'POST' && url.pathname === '/auth/logout') {
         const s = getSession(req);
         if (s) {
@@ -577,6 +651,10 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         if (session.guildId !== GUILD_ID) return send(res, 403, { error: 'Access denied' });
         const liveGuild = client.guilds.cache.get(GUILD_ID);
         if (!liveGuild) return send(res, 503, { error: 'Bot is not in the configured server' });
+        const authorizeManager = async () => {
+          const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
+          return !!actor && (actor.permissions.has('Administrator') || actor.permissions.has('ManageGuild'));
+        };
         if (req.method === 'POST' && url.pathname === '/api/data-restore') {
           const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
           if (!actor || (!actor.permissions.has('Administrator') && !actor.permissions.has('ManageGuild'))) return send(res, 403, { error: 'You no longer have server management permission.' });
@@ -817,11 +895,13 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           }
         }
         if (req.method === 'GET' && url.pathname === '/api/me') {
+          if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const channels = await liveGuild.channels.fetch();
           const roles = await liveGuild.roles.fetch();
           return send(res, 200, { roles: roles.filter(role => role.id !== liveGuild.id && !role.managed).map(role => ({ id: role.id, name: role.name })).sort((a,b)=>a.name.localeCompare(b.name)), user: session.user, guild: { id: liveGuild.id, name: liveGuild.name, memberCount: liveGuild.memberCount }, channels: channels.filter(c => c && c.guild && (c.isTextBased() || c.isVoiceBased() || c.type === 4)).map(c => ({ id: c.id, name: c.name, type: c.type })).sort((a,b)=>a.name.localeCompare(b.name)), settings, commands: [{name:'play',description:'Play a track by title or URL',category:'Music'},{name:'join',description:'Join your current voice channel',category:'Music'},{name:'queue',description:'Show the music queue',category:'Music'},{name:'skip',description:'Skip the current track',category:'Music'},{name:'pause',description:'Pause playback',category:'Music'},{name:'resume',description:'Resume playback',category:'Music'},{name:'stop',description:'Stop playback and clear the queue',category:'Music'},{name:'leave',description:'Leave the voice channel',category:'Music'},{name:'kick',description:'Kick a server member',category:'Moderation'},{name:'ban',description:'Ban a user',category:'Moderation'},{name:'timeout',description:'Temporarily time out a member',category:'Moderation'},{name:'untimeout',description:'Remove a member timeout',category:'Moderation'},{name:'clear',description:'Delete recent messages',category:'Moderation'},{name:'slowmode',description:'Set channel slowmode',category:'Moderation'},{name:'lock',description:'Lock this channel',category:'Moderation'},{name:'unlock',description:'Unlock this channel',category:'Moderation'},{name:'warn',description:'Add a warning to a member',category:'Moderation'},{name:'warnings',description:'List warnings for a member',category:'Moderation'},{name:'clearwarns',description:'Clear warnings for a member',category:'Moderation'},{name:'activity',description:'Change the bot activity',category:'Bot'},{name:'ping',description:'Check bot latency',category:'Bot'},{name:'help',description:'Show the command list',category:'Bot'}] });
         }
         if (req.method === 'PUT' && url.pathname === '/api/settings') {
+          if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const body = await readBody(req);
           const liveChannels = await liveGuild.channels.fetch();
           const liveRoles = await liveGuild.roles.fetch();
@@ -838,6 +918,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           return send(res, 200, { ok: true });
         }
         if (req.method === 'PUT' && url.pathname === '/api/welcome-image') {
+          if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const body = await readBody(req, 7 * 1024 * 1024);
           const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ''));
           if (!match) return send(res, 400, { error: 'Upload a PNG, JPG or WebP image.' });
@@ -852,14 +933,6 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           settings.welcome.imageUrl = '/welcome-preview';
           saveSettings();
           return send(res, 200, { ok: true });
-        }
-        if (req.method === 'GET' && url.pathname === '/welcome-preview') {
-          const s = getSession(req);
-          if (!s || s.guildId !== GUILD_ID || !settings.welcome.imagePath || !fs.existsSync(settings.welcome.imagePath)) return send(res, 404, 'Not found', 'text/plain');
-          const ext = path.extname(settings.welcome.imagePath).toLowerCase();
-          const type = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-          res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
-          return fs.createReadStream(settings.welcome.imagePath).pipe(res);
         }
         if (req.method === 'GET' && url.pathname === '/api/members/list') { const actor=await liveGuild.members.fetch(session.user.id).catch(()=>null); if(!actor||(!actor.permissions.has('Administrator')&&!actor.permissions.has('ManageGuild')))return send(res,403,{error:'Server management permission required.'}); const found=await liveGuild.members.fetch().catch(()=>null); if(!found)return send(res,503,{error:'Could not load server members. Check the Server Members intent.'}); const xpDb=require('./community').getXpData?require('./community').getXpData():null; const members=found.filter(m=>!m.user.bot).map(m=>({id:m.id,username:m.user.username,displayName:m.displayName,xp:Number(xpDb?.[liveGuild.id]?.[m.id]?.xp||0)})).sort((a,b)=>a.displayName.localeCompare(b.displayName)); return send(res,200,{members}); }
         if (req.method === 'GET' && url.pathname === '/api/xp/members') { const actor=await liveGuild.members.fetch(session.user.id).catch(()=>null); if(!actor||(!actor.permissions.has('Administrator')&&!actor.permissions.has('ManageGuild')))return send(res,403,{error:'Server management permission required.'}); const q=String(url.searchParams.get('q')||'').trim().slice(0,80); if(q.length<2)return send(res,400,{error:'Enter at least 2 characters.'}); const found=await liveGuild.members.search({query:q,limit:25}).catch(()=>null); if(!found)return send(res,503,{error:'Could not search server members.'}); const xpDb=require('./community').getXpData?require('./community').getXpData():null; const members=found.filter(m=>!m.user.bot).map(m=>({id:m.id,username:m.user.username,displayName:m.displayName,xp:Number(xpDb?.[liveGuild.id]?.[m.id]?.xp||0)})); return send(res,200,{members}); }
@@ -891,7 +964,8 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
       return send(res, 404, 'Not found', 'text/plain');
     } catch (error) {
       console.error('Dashboard request failed:', error.message || error);
-      return send(res, 500, { error: 'Internal server error' });
+      const status = Number.isInteger(error.status) ? error.status : 500;
+      return send(res, status, { error: status === 413 ? 'Request too large' : status === 400 ? (error.message || 'Bad request') : 'Internal server error' });
     }
   });
   server.listen(PORT, '0.0.0.0', () => console.log('Dashboard listening on port ' + PORT + ' for server ' + GUILD_ID));
