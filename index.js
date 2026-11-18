@@ -281,7 +281,7 @@ async function getYtDlpMediaInfo(url) {
       clearTimeout(timeout);
       void removeYtDlpCookieCopy(cookiePath);
       if (code !== 0 || !stdout.trim()) {
-        const safeError = stderr.replace(/https?:\\/\\/\\S+/g, '[URL omitted]').trim();
+        const safeError = stderr.replace(/https?:\/\/\S+/g, '[URL omitted]').trim();
         reject(new Error('Could not resolve media for seeking: ' + (safeError || 'yt-dlp exited with code ' + code)));
         return;
       }
@@ -293,12 +293,12 @@ async function getYtDlpMediaInfo(url) {
           : null;
         const mediaUrl = (format && format.url) || info.url;
         const headers = (format && format.http_headers) || info.http_headers || {};
-        if (!mediaUrl || !/^https?:\\/\\//i.test(mediaUrl)) throw new Error('yt-dlp did not return a direct media URL.');
+        if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) throw new Error('yt-dlp did not return a direct media URL.');
         const headerText = Object.entries(headers)
-          .filter(([name, value]) => /^[A-Za-z0-9-]+$/.test(name) && value != null && !/[\\r\\n]/.test(String(value)))
+          .filter(([name, value]) => /^[A-Za-z0-9-]+$/.test(name) && value != null && !/[\r\n]/.test(String(value)))
           .map(([name, value]) => name + ': ' + String(value))
-          .join('\\r\\n');
-        resolve({ url: mediaUrl, headers: headerText ? headerText + '\\r\\n' : '' });
+          .join('\r\n');
+        resolve({ url: mediaUrl, headers: headerText ? headerText + '\r\n' : '' });
       } catch (error) {
         reject(new Error('Invalid media information: ' + (error.message || error)));
       }
