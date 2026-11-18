@@ -1336,6 +1336,10 @@ async function playNext(guildId) {
     await updateMusicPanel(queue, track);
     logDebug('Lavalink track sent to the audio node:', track.title);
   } catch (error) {
+    if (queue.lavalinkPlayer !== player || queue.current !== track) {
+      logDebug('Ignoring a stale Lavalink start failure after the voice connection changed:', track.title);
+      return;
+    }
     console.error('Lavalink track failed to start:', track.title, error.message || error);
     queue.current = null;
     queue.player.state.status = AudioPlayerStatus.Idle;
