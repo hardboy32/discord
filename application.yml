@@ -15,7 +15,7 @@ lavalink:
     frameBufferDurationMs: 5000
   pluginsDir: "/app/data/lavalink-plugins"
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:02f536d9ac05b4bb0f91dedc19f964f30fc18559"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:e41dd95f8bd134b51e75080fb28cc805fecb431a"
       repository: "https://maven.lavalink.dev/snapshots"
       snapshot: true
 
