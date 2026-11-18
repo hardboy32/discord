@@ -1357,7 +1357,7 @@ const pendingMusicSelections = new Map();
 async function searchTrackCandidates(query, requestedBy) {
   const input = String(query || '').trim();
   if (!input) throw new Error('Enter a song name.');
-  if (/^https?:\\/\\//i.test(input)) {
+  if (/^https?:\/\//i.test(input)) {
     const tracks = await resolveLavalinkTracks(input, requestedBy, input, '');
     return tracks.slice(0, 1);
   }
@@ -1409,7 +1409,7 @@ async function sendMusicSearchChoices(message, query) {
     expiresAt: Date.now() + 60_000,
   });
   const options = candidates.slice(0, 25).map((track, index) => ({
-    label: String(track.title || 'Unknown track').replace(/\\s+/g, ' ').slice(0, 100),
+    label: String(track.title || 'Unknown track').replace(/\s+/g, ' ').slice(0, 100),
     description: (String(track.source || 'music') + ' • ' + String(track.duration || 'Unknown duration')).slice(0, 100),
     value: String(index),
   }));
