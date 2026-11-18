@@ -39,4 +39,4 @@ plugins:
 
 logging:
   level:
-    root: INFO
+    root: WARN
