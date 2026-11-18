@@ -1112,6 +1112,7 @@ async function playNext(guildId) {
       console.error('Audio resource stream error:', error.message || error);
     });
     queue.player.play(resource);
+    if (track.resumePaused) queue.player.pause(true);
     await updateMusicPanel(queue, track);
     console.log('Audio resource queued:', track.title);
     console.log('Seekable FFmpeg audio stream linked to Discord audio resource:', track.title);
