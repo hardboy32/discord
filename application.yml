@@ -33,13 +33,13 @@ plugins:
       enabled: true
       refreshToken: "${YT_OAUTH_REFRESH_TOKEN:}"
     clients:
-      - TV
-      - WEBEMBEDDED
-      - TVHTML5_SIMPLY
       - WEB
-      - MWEB
       - MUSIC
       - ANDROID_VR
+      - MWEB
+      - WEBEMBEDDED
+      - TVHTML5_SIMPLY
+      - TV
 
 logging:
   level:
