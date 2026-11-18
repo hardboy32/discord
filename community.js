@@ -62,7 +62,62 @@ new SlashCommandBuilder().setName('tempvoice-setup').setDescription('Set tempora
 
 ,new SlashCommandBuilder().setName('stream-alert-setup').setDescription('Configure a creator live notification').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).addStringOption(o=>o.setName('platform').setDescription('Streaming platform (or dashboard default)').setRequired(false).addChoices({name:'Twitch',value:'twitch'},{name:'YouTube',value:'youtube'},{name:'Kick',value:'kick'})).addStringOption(o=>o.setName('creator').setDescription('Creator username or channel ID (or dashboard default)').setRequired(false).setMaxLength(100)).addChannelOption(o=>o.setName('channel').setDescription('Notification channel (or dashboard default)').setRequired(false).addChannelTypes(ChannelType.GuildText))
 ]}
-async function endGiveaway(i,id){const k=i.guild.id+':'+id,r=db.giveaways[k];if(!r||r.ended)return 'Giveaway not found/already ended.';const ch=await i.guild.channels.fetch(r.channelId).catch(()=>null),m=ch&&await ch.messages.fetch(id).catch(()=>null);if(!m)return 'Giveaway message not found.';let pool=[...new Set(r.entries)],w=[];while(pool.length&&w.length<r.winners)w.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);r.ended=true;r.winnerIds=w;save();await m.edit({embeds:[EmbedBuilder.from(m.embeds[0]).setTitle('Giveaway ended').setColor(0x747f8d).setDescription('Prize: '+r.prize+'\nWinners: '+(w.map(x=>'<@'+x+'>').join(', ')||'No entries'))],components:[]});if(w.length)await ch.send('Congratulations '+w.map(x=>'<@'+x+'>').join(', ')+'!');return 'Giveaway ended.'}
+const giveawayEnding = new Set();
+
+async function finishGiveaway(guild, record, messageId) {
+  const key = guild.id + ':' + messageId;
+  if (record.ended) return { ended: true, message: 'Giveaway not found/already ended.' };
+  if (giveawayEnding.has(key)) return { ended: false, message: 'This giveaway is already being ended.' };
+
+  giveawayEnding.add(key);
+  try {
+    const channel = await guild.channels.fetch(record.channelId).catch(() => null);
+    const message = channel && await channel.messages.fetch(messageId).catch(() => null);
+    if (!message) {
+      record.ended = true;
+      save();
+      return { ended: true, message: 'Giveaway message not found.' };
+    }
+
+    const pool = [...new Set(record.entries || [])];
+    const winners = [];
+    while (pool.length && winners.length < (record.winners || 1)) {
+      winners.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+
+    record.ended = true;
+    record.winnerIds = winners;
+    save();
+
+    await message.edit({
+      embeds: [
+        EmbedBuilder.from(message.embeds[0])
+          .setTitle('Giveaway ended')
+          .setColor(0x747f8d)
+          .setDescription('Prize: ' + record.prize + '\\nWinners: ' + (winners.map(id => '<@' + id + '>').join(', ') || 'No entries')),
+      ],
+      components: [],
+    }).catch(error => console.warn('Giveaway end message update failed:', error.message || error));
+
+    if (winners.length && channel?.isTextBased()) {
+      await channel.send({
+        content: 'Congratulations ' + winners.map(id => '<@' + id + '>').join(', ') + '! You won ' + record.prize + '.',
+        allowedMentions: { users: winners },
+      }).catch(error => console.warn('Giveaway winner announcement failed:', error.message || error));
+    }
+    return { ended: true, message: 'Giveaway ended.' };
+  } finally {
+    giveawayEnding.delete(key);
+  }
+}
+
+async function endGiveaway(interaction, messageId) {
+  const key = interaction.guild.id + ':' + messageId;
+  const record = db.giveaways[key];
+  if (!record || record.ended) return 'Giveaway not found/already ended.';
+  const result = await finishGiveaway(interaction.guild, record, messageId);
+  return result.message;
+}
 async function handleCommunityInteraction(i){
 if(!i.guild)return false;
 if(i.isChatInputCommand()){
@@ -220,7 +275,15 @@ async function checkStreamAlerts(client) {
   }
 }
 
-async function processScheduledGiveaways(client){for(const [key,r] of Object.entries(db.giveaways||{})){if(r.ended||!r.endsAt||Date.now()<r.endsAt)continue;const [guildId,messageId]=key.split(':'),guild=client.guilds.cache.get(guildId);if(!guild)continue;const channel=await guild.channels.fetch(r.channelId).catch(()=>null),message=channel&&await channel.messages.fetch(messageId).catch(()=>null);if(!message){r.ended=true;save();continue}let pool=[...new Set(r.entries||[])],w=[];while(pool.length&&w.length<(r.winners||1))w.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);r.ended=true;r.winnerIds=w;save();await message.edit({embeds:[EmbedBuilder.from(message.embeds[0]).setTitle('Giveaway ended').setColor(0x747f8d).setDescription('Prize: '+r.prize+'\nWinners: '+(w.map(x=>'<@'+x+'>').join(', ')||'No entries'))],components:[]}).catch(()=>{});if(w.length&&channel?.isTextBased())await channel.send({content:'Congratulations '+w.map(x=>'<@'+x+'>').join(', ')+'! You won '+r.prize+'.',allowedMentions:{users:w}}).catch(()=>{})}}
+async function processScheduledGiveaways(client) {
+  for (const [key, record] of Object.entries(db.giveaways || {})) {
+    if (record.ended || !record.endsAt || Date.now() < record.endsAt || giveawayEnding.has(key)) continue;
+    const [guildId, messageId] = key.split(':');
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    await finishGiveaway(guild, record, messageId);
+  }
+}
 async function processScheduledPolls(client){for(const [key,r] of Object.entries(db.polls||{})){if(!r.endsAt||r.closed||Date.now()<r.endsAt)continue;const [guildId,id]=key.split(':'),guild=client.guilds.cache.get(guildId);if(!guild)continue;const channel=r.channelId&&await guild.channels.fetch(r.channelId).catch(()=>null),message=channel&&r.messageId&&await channel.messages.fetch(r.messageId).catch(()=>null);r.closed=true;save();if(message)await message.edit({embeds:[EmbedBuilder.from(message.embeds[0]).setTitle((message.embeds[0]?.title||'Poll')+' — Closed')],components:[]}).catch(()=>{});}}
 function attachCommunityModules(client){
   load();
