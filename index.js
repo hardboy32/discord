@@ -1034,7 +1034,7 @@ async function getDashboardMusicStatus(guildId) {
     playing,
     paused: queue.player.state.status === AudioPlayerStatus.Paused,
     title: track ? track.title : '',
-    position: Math.floor(position),
+    position,
     duration: track ? Number(track.durationSeconds || 0) : 0,
     segmentEnd: track ? Number(track.segmentEnd || 0) : 0,
     channelId: queue.voiceChannelId || '',
