@@ -1409,17 +1409,18 @@ async function sendMusicSearchChoices(message, query) {
     expiresAt: Date.now() + 60_000,
   });
   const rows = [];
-  const visibleCandidates = candidates.slice(0, 25);
-  for (let offset = 0; offset < visibleCandidates.length; offset += 5) {
-    const row = new ActionRowBuilder();
-    for (let index = offset; index < Math.min(offset + 5, visibleCandidates.length); index++) {
-      const track = visibleCandidates[index];
-      const title = String(track.title || 'Unknown track').replace(/\s+/g, ' ').slice(0, 75);
-      row.addComponents(new ButtonBuilder()
+  // Discord allows at most five action rows per message. Use one full-width
+  // button per row so the song choices form a clean vertical list.
+  const visibleCandidates = candidates.slice(0, 5);
+  for (let index = 0; index < visibleCandidates.length; index++) {
+    const track = visibleCandidates[index];
+    const title = String(track.title || 'Unknown track').replace(/\\s+/g, ' ').slice(0, 75);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
         .setCustomId('music-search:' + selectionId + ':' + index)
         .setLabel((index + 1) + '. ' + title.slice(0, 75 - String(index + 1).length - 2))
-        .setStyle(ButtonStyle.Secondary));
-    }
+        .setStyle(ButtonStyle.Secondary)
+    );
     rows.push(row);
   }
   const reply = await message.reply({
