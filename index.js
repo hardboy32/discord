@@ -1,5 +1,11 @@
 require('dotenv').config();
 
+// Keep Railway logs focused on warnings and errors by default.
+// Set DEBUG_LOGS=true in Railway Variables to enable routine diagnostics.
+const logDebug = (...args) => {
+  if (/^true$/i.test(String(process.env.DEBUG_LOGS || ''))) logDebug(...args);
+};
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -20,7 +26,7 @@ if (!ffmpegPath) {
   console.error('FFmpeg is missing. Check that ffmpeg-static installed correctly or set FFMPEG_PATH.');
   process.exit(1);
 }
-console.log('Using FFmpeg binary:', ffmpegPath);
+logDebug('Using FFmpeg binary:', ffmpegPath);
 
 function logFfmpegVersion() {
   const probe = spawn(ffmpegPath, ['-version'], { stdio: ['ignore', 'pipe', 'ignore'] });
@@ -30,7 +36,7 @@ function logFfmpegVersion() {
     const firstLine = chunk.toString().split(String.fromCharCode(10))[0].trim();
     if (firstLine) {
       reported = true;
-      console.log('FFmpeg version:', firstLine);
+      logDebug('FFmpeg version:', firstLine);
     }
   });
   probe.on('error', error => {
@@ -84,7 +90,7 @@ async function runSetupCommand(command, args, options = {}) {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
-    child.stdout.on('data', chunk => process.stdout.write(chunk));
+    child.stdout.on('data', chunk => { if (/^true$/i.test(String(process.env.DEBUG_LOGS || ''))) process.stdout.write(chunk); });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-5000); });
     child.on('error', reject);
     child.on('close', code => code === 0 ? resolve() : reject(new Error(command + ' exited with code ' + code + ': ' + stderr)));
@@ -97,7 +103,7 @@ async function ensureBgutilReady() {
       const serverEntry = path.join(BGUTIL_ROOT, 'server', 'build', 'main.js');
       const pluginRoot = path.join(BGUTIL_ROOT, 'plugin');
       if (!fs.existsSync(serverEntry) || !fs.existsSync(path.join(pluginRoot, 'yt_dlp_plugins'))) {
-        console.log('Installing BgUtils YouTube PO Token provider ' + BGUTIL_VERSION + '...');
+        logDebug('Installing BgUtils YouTube PO Token provider ' + BGUTIL_VERSION + '...');
         await fs.promises.mkdir(path.dirname(BGUTIL_ROOT), { recursive: true });
         const response = await fetch('https://codeload.github.com/Brainicism/bgutil-ytdlp-pot-provider/tar.gz/refs/tags/' + BGUTIL_VERSION, {
           signal: AbortSignal.timeout(120000), redirect: 'follow',
@@ -116,7 +122,7 @@ async function ensureBgutilReady() {
       }
       if (!fs.existsSync(serverEntry)) throw new Error('BgUtils provider build output was not created.');
       bgutilAvailable = true;
-      console.log('BgUtils PO Token provider is ready (script mode).');
+      logDebug('BgUtils PO Token provider is ready (script mode).');
     })().catch(error => {
       bgutilAvailable = false;
       console.error('BgUtils setup failed; continuing with standard yt-dlp:', error.message || error);
@@ -140,7 +146,7 @@ async function ensureYtDlpReady() {
   if (!ytDlpInitPromise) {
     ytDlpInitPromise = (async () => {
       if (!fs.existsSync(YTDLP_PATH)) {
-        console.log('Downloading the official yt-dlp standalone binary...');
+        logDebug('Downloading the official yt-dlp standalone binary...');
         const asset = process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
         const response = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/' + asset, {
           signal: AbortSignal.timeout(120000), redirect: 'follow',
@@ -169,20 +175,20 @@ async function ensureYtDlpReady() {
           'SID', 'HSID', 'SSID', 'APISID', 'SAPISID',
           '__Secure-1PSID', '__Secure-3PSID',
         ].some(name => cookieNames.has(name));
-        console.log('YouTube cookies loaded from Railway secret (' + ytDlpCookieCount + ' entries).');
+        logDebug('YouTube cookies loaded from Railway secret (' + ytDlpCookieCount + ' entries).');
         if (!hasLoginSessionCookie) {
           console.warn('The cookie file has no common YouTube account-session cookie. Re-export a fresh Netscape cookies file while signed in to YouTube, then update YOUTUBE_COOKIES_B64 in Railway.');
         }
-        console.log('A fresh private cookie-file copy will be created for every yt-dlp process.');
+        logDebug('A fresh private cookie-file copy will be created for every yt-dlp process.');
       } else {
         ytDlpCookiesText = null;
         if (YOUTUBE_COOKIES_B64 && !YOUTUBE_USE_COOKIES) {
-          console.log('YOUTUBE_COOKIES_B64 is present but ignored. Public YouTube playback is using guest mode; set YOUTUBE_USE_COOKIES=true only for account-restricted videos.');
+          logDebug('YOUTUBE_COOKIES_B64 is present but ignored. Public YouTube playback is using guest mode; set YOUTUBE_USE_COOKIES=true only for account-restricted videos.');
         } else {
-          console.log('YouTube account cookies are disabled; public playback will use BgUtils PO Tokens without a signed-in account.');
+          logDebug('YouTube account cookies are disabled; public playback will use BgUtils PO Tokens without a signed-in account.');
         }
       }
-      console.log('yt-dlp is ready.');
+      logDebug('yt-dlp is ready.');
     })().catch(error => { ytDlpInitPromise = null; throw error; });
   }
   await ytDlpInitPromise;
@@ -456,7 +462,7 @@ const shoukaku = new Shoukaku(
   }
 );
 shoukaku.on('ready', (name, resumed) => {
-  console.log('Lavalink node ready:', name, '| session resumed:', Boolean(resumed));
+  logDebug('Lavalink node ready:', name, '| session resumed:', Boolean(resumed));
 });
 shoukaku.on('reconnecting', (name, triesLeft, interval) => {
   console.warn('Lavalink reconnecting:', name, '| attempts left:', triesLeft, '| retry seconds:', interval);
@@ -576,7 +582,7 @@ async function keepOnlyLatestMusicRequestMessage(message) {
   const previous = musicRequestMessageCleanupQueues.get(channelId) || Promise.resolve();
   const current = previous.catch(() => {}).then(async () => {
     const deletedCount = await deleteOlderMusicRequestMessages(message.channel, message.id);
-    console.log('Music request channel kept only the latest member request:', message.id,
+    logDebug('Music request channel kept only the latest member request:', message.id,
       '| removed previous requests:', deletedCount);
   });
   musicRequestMessageCleanupQueues.set(channelId, current);
@@ -641,7 +647,7 @@ async function checkMusicRequestCleanup(readyClient) {
 
     if (!musicSettings.enabled || !requestChannelId) {
       if (!musicRequestCleanupStartupLogged.has(guild.id)) {
-        console.log(
+        logDebug(
           'Daily music request cleanup is not scheduled for guild ' + guild.id + ': ' +
           (!musicSettings.enabled ? 'the music module is disabled.' : 'no request channel is selected in Dashboard Settings.')
         );
@@ -662,7 +668,7 @@ async function checkMusicRequestCleanup(readyClient) {
       };
       saveMusicRequestCleanupState();
       const selectedChannel = guild.channels.cache.get(requestChannelId);
-      console.log(
+      logDebug(
         'Daily music request cleanup scheduled for #' +
         (selectedChannel ? selectedChannel.name : requestChannelId) +
         '; the first cleanup will run in 24 hours.'
@@ -674,7 +680,7 @@ async function checkMusicRequestCleanup(readyClient) {
     if (!musicRequestCleanupStartupLogged.has(guild.id)) {
       const remainingMs = Math.max(0, MUSIC_REQUEST_CLEANUP_INTERVAL_MS - (Date.now() - Number(saved.lastCleanupAt)));
       const selectedChannel = guild.channels.cache.get(requestChannelId);
-      console.log(
+      logDebug(
         'Daily music request cleanup is active in #' +
         (selectedChannel ? selectedChannel.name : requestChannelId) +
         '; next cleanup in about ' + Math.ceil(remainingMs / 60000) + ' minutes.'
@@ -714,7 +720,7 @@ async function checkMusicRequestCleanup(readyClient) {
         lastCleanupAt: Date.now(),
       };
       saveMusicRequestCleanupState();
-      console.log(
+      logDebug(
         'Daily music request cleanup completed in #' + channel.name +
         ': deleted ' + result.deletedCount + ' member messages; scanned ' +
         result.scannedCount + ' messages. Bot messages and the music panel were kept.'
@@ -737,7 +743,7 @@ function startMusicRequestCleanupScheduler(readyClient) {
   runCheck();
   musicRequestCleanupTimer = setInterval(runCheck, MUSIC_REQUEST_CLEANUP_CHECK_MS);
   if (typeof musicRequestCleanupTimer.unref === 'function') musicRequestCleanupTimer.unref();
-  console.log('Daily music request cleanup scheduler started.');
+  logDebug('Daily music request cleanup scheduler started.');
 }
 
 async function createFallbackGifAttachment() {
@@ -772,7 +778,7 @@ async function ensureSoundCloudReady() {
       if (!clientId) throw new Error('SoundCloud did not return a client ID.');
       soundCloudClientId = clientId;
       play.setToken({ soundcloud: { client_id: clientId } });
-      console.log('SoundCloud client configured.');
+      logDebug('SoundCloud client configured.');
     })().catch((error) => {
       soundCloudInitPromise = null;
       throw error;
@@ -923,7 +929,7 @@ async function findLavalinkAlternative(query, requestedBy, failedSource) {
     if (candidates.length) {
       candidates[0].alternatives = candidates.slice(1);
       candidates[0].fallbackAttempted = true;
-      console.log('Lavalink fallback search found ' + candidates.length + ' ' + source + ' candidates.');
+      logDebug('Lavalink fallback search found ' + candidates.length + ' ' + source + ' candidates.');
       return candidates[0];
     }
     console.warn('Lavalink fallback search returned no ' + source + ' candidates; trying the independent search provider.');
@@ -958,7 +964,7 @@ async function findLavalinkAlternative(query, requestedBy, failedSource) {
       }
       if (candidates.length) {
         candidates[0].alternatives = candidates.slice(1);
-        console.log('Independent SoundCloud fallback found ' + candidates.length + ' playable Lavalink candidates.');
+        logDebug('Independent SoundCloud fallback found ' + candidates.length + ' playable Lavalink candidates.');
         return candidates[0];
       }
       console.warn('Independent SoundCloud search returned no tracks that Lavalink could resolve.');
@@ -1034,7 +1040,7 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
     if (queue.playbackWatchdog) clearTimeout(queue.playbackWatchdog);
     queue.player.state.status = lavalinkPlayer.paused ? AudioPlayerStatus.Paused : AudioPlayerStatus.Playing;
     queue.lavalinkPosition = lavalinkPlayer.position || 0;
-    console.log('Lavalink started track:', startedTrack.title);
+    logDebug('Lavalink started track:', startedTrack.title);
     void updateMusicPanel(queue, startedTrack);
 
     // If the stream never advances, stop it and let the end handler run fallback.
@@ -1097,7 +1103,7 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
     }
     const finishedTrack = queue.current;
     const reason = event && event.reason ? event.reason : 'unknown';
-    console.log('Lavalink track ended:', finishedTrack && finishedTrack.title || 'unknown track',
+    logDebug('Lavalink track ended:', finishedTrack && finishedTrack.title || 'unknown track',
       '| reason:', reason);
 
     // Lavalink can emit TrackEnd before TrackException for a failed source.
@@ -1192,7 +1198,7 @@ function preferModernSoundCloudFormats(trackInfo, trackTitle = 'unknown track') 
     return trackInfo;
   }
 
-  console.log(
+  logDebug(
     'SoundCloud formats for "' + String(trackTitle).slice(0, 100) + '": ' +
     selected.map(item => String(item.preset || 'unknown') + '/' +
       String(item.format.mime_type || 'unknown')).join(', ')
@@ -1252,7 +1258,7 @@ async function resolveSoundCloudPlaylistUrl(trackInfo, trackTitle) {
         throw new Error('SoundCloud media endpoint did not return a playlist URL.');
       }
 
-      console.log('Resolved SoundCloud HLS for FFmpeg:', trackTitle, '|', format.preset || 'HLS');
+      logDebug('Resolved SoundCloud HLS for FFmpeg:', trackTitle, '|', format.preset || 'HLS');
       return playlistUrl;
     } catch (error) {
       lastError = error;
@@ -1291,7 +1297,7 @@ async function createSoundCloudPcmProcess(trackInfo, trackTitle, startSeconds = 
     'pipe:1'
   );
 
-  console.log('Starting diagnostic SoundCloud FFmpeg PCM pipeline:', trackTitle);
+  logDebug('Starting diagnostic SoundCloud FFmpeg PCM pipeline:', trackTitle);
   const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   child.audioBytes = 0;
   let stderrTail = '';
@@ -1305,14 +1311,14 @@ async function createSoundCloudPcmProcess(trackInfo, trackTitle, startSeconds = 
   child.stdout.on('data', chunk => {
     child.audioBytes += chunk.length;
     if (child.audioBytes === chunk.length) {
-      console.log('SoundCloud FFmpeg emitted first PCM bytes:', chunk.length, 'for', trackTitle);
+      logDebug('SoundCloud FFmpeg emitted first PCM bytes:', chunk.length, 'for', trackTitle);
     }
   });
   child.on('close', (code, signal) => {
     const safeDetails = stderrTail.split(String.fromCharCode(10)).map(line =>
       line.includes('://') ? '[FFmpeg diagnostic URL omitted]' : line
     ).join(String.fromCharCode(10)).trim();
-    console.log(
+    logDebug(
       'SoundCloud FFmpeg closed:', 'code=' + code, 'signal=' + signal,
       'pcmBytes=' + child.audioBytes, 'track=' + trackTitle
     );
@@ -1529,7 +1535,7 @@ async function findTrack(query, requestedBy) {
       if (candidates.length) {
         candidates[0].alternatives = candidates.slice(1);
         candidates[0].fallbackAttempted = false;
-        console.log('Lavalink title search resolved through ' + source + ':', candidates[0].title);
+        logDebug('Lavalink title search resolved through ' + source + ':', candidates[0].title);
         return candidates[0];
       }
     } catch (error) {
@@ -1549,7 +1555,7 @@ async function setMusicVoiceChannelStatus(queue, status, channelIdOverride = nul
       body: { status: normalized },
     });
     if (queue) queue.voiceStatusText = normalized;
-    console.log('Voice channel status updated:', normalized || '(cleared)');
+    logDebug('Voice channel status updated:', normalized || '(cleared)');
   } catch (error) {
     console.warn(
       'Could not update voice channel status. Grant the bot Set Voice Channel Status permission:',
@@ -1579,7 +1585,7 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     queue.player.state.status = AudioPlayerStatus.Idle;
     queue.lavalinkPosition = 0;
   }
-  console.log('Bot left voice channel; clearing its previous channel status:', previousChannelId);
+  logDebug('Bot left voice channel; clearing its previous channel status:', previousChannelId);
 });
 
 async function connectVoice(guild, channel, queue) {
@@ -1612,7 +1618,7 @@ async function connectVoice(guild, channel, queue) {
   queue.lavalinkPosition = 0;
   queue.pendingTrackFailure = null;
   attachLavalinkPlayerEvents(queue, guild.id, lavalinkPlayer);
-  console.log('Lavalink voice player connected:', channel.name, '| guild:', guild.id);
+  logDebug('Lavalink voice player connected:', channel.name, '| guild:', guild.id);
   return lavalinkPlayer;
 }
 
@@ -1700,7 +1706,7 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
   }
   // Lavalink's built-in LocalAudioSourceManager expects the absolute file
   // path itself as the load identifier; "local:" is not a valid source prefix.
-  console.log('Resolving saved library audio through Lavalink local source:', path.basename(safeFilePath));
+  logDebug('Resolving saved library audio through Lavalink local source:', path.basename(safeFilePath));
   const localResults = await resolveLavalinkTracks(
     safeFilePath,
     requestedBy || 'Dashboard',
@@ -1728,7 +1734,7 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(track);
   if (!queue.current) void playNext(guild.id);
-  console.log('Dashboard library music request:', track.title, '->', channel.name, '| queue position:', position);
+  logDebug('Dashboard library music request:', track.title, '->', channel.name, '| queue position:', position);
   return { track, position, channelName: channel.name };
 }
 
@@ -1763,7 +1769,7 @@ async function playTrackFromDashboard(guildId, voiceChannelId, url, requestedBy 
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(track);
   if (!queue.current) void playNext(guild.id);
-  console.log('Dashboard music request:', track.title, '->', channel.name, '| queue position:', position);
+  logDebug('Dashboard music request:', track.title, '->', channel.name, '| queue position:', position);
   return { track, position, channelName: channel.name };
 }
 
@@ -1868,7 +1874,7 @@ function buildMusicPanel(queue, track) {
 
   const panelImage = track.thumbnail || 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
   artworkEmbed.setImage(panelImage);
-  console.log('Music panel artwork:', track.thumbnail ? 'track thumbnail' : 'fallback GIF', panelImage);
+  logDebug('Music panel artwork:', track.thumbnail ? 'track thumbnail' : 'fallback GIF', panelImage);
 
   const paused = queue.player.state.status === AudioPlayerStatus.Paused;
   const row = new ActionRowBuilder().addComponents(
@@ -1912,13 +1918,13 @@ async function updateMusicPanel(queue, track) {
   const forceUploadedArtwork = musicSettings.artworkMode === 'force';
   if (track.thumbnail && !forceUploadedArtwork) {
     artworkEmbed.setImage(track.thumbnail);
-    console.log('Music panel artwork: using track cover');
+    logDebug('Music panel artwork: using track cover');
   } else {
     try {
       const fallbackAttachment = await createFallbackGifAttachment();
       artworkEmbed.setImage('attachment://music-fallback.gif');
       payload.files = [fallbackAttachment];
-      console.log('Music panel artwork:', forceUploadedArtwork ? 'forced uploaded artwork' : 'fallback for missing track cover');
+      logDebug('Music panel artwork:', forceUploadedArtwork ? 'forced uploaded artwork' : 'fallback for missing track cover');
     } catch (error) {
       console.warn('Could not upload fallback GIF; using the remote image URL:', error.message || error);
       artworkEmbed.setImage(MUSIC_FALLBACK_GIF_URL);
@@ -1931,9 +1937,9 @@ async function updateMusicPanel(queue, track) {
     if (savedMessageId) {
       queue.nowPlayingMessage = await channel.messages.fetch(savedMessageId).catch(() => null);
       if (queue.nowPlayingMessage) {
-        console.log('Reconnected to existing music panel after restart:', savedMessageId);
+        logDebug('Reconnected to existing music panel after restart:', savedMessageId);
       } else {
-        console.log('Saved music panel message no longer exists; a new panel will be created.');
+        logDebug('Saved music panel message no longer exists; a new panel will be created.');
       }
     }
   }
@@ -2028,7 +2034,7 @@ async function playNext(guildId) {
   const track = queue.tracks.shift();
   queue.current = track;
   try {
-    console.log('Lavalink loading track:', track.title, '| source:', track.source || 'unknown');
+    logDebug('Lavalink loading track:', track.title, '| source:', track.source || 'unknown');
     const startAt = Math.max(0, Number(track.startAt) || 0);
     const endAt = Math.max(0, Number(track.endAt) || 0);
     const options = { track: { encoded: track.encoded } };
@@ -2050,7 +2056,7 @@ async function playNext(guildId) {
 
     void setMusicVoiceChannelStatus(queue, '🎵 ' + String(track.title || 'Now Playing'));
     await updateMusicPanel(queue, track);
-    console.log('Lavalink track sent to the audio node:', track.title);
+    logDebug('Lavalink track sent to the audio node:', track.title);
   } catch (error) {
     console.error('Lavalink track failed to start:', track.title, error.message || error);
     queue.current = null;
@@ -2174,11 +2180,11 @@ async function registerCommands() {
 
   if (GUILD_ID) {
     await rest.put(Routes.applicationGuildCommands(appId, GUILD_ID), { body: commands });
-    console.log('Registered ' + commands.length + ' slash commands for guild ' + GUILD_ID + '.');
+    logDebug('Registered ' + commands.length + ' slash commands for guild ' + GUILD_ID + '.');
   } else {
     await rest.put(Routes.applicationCommands(appId), { body: commands });
-    console.log('Registered ' + commands.length + ' global slash commands.');
-    console.log('For faster command updates while testing, set DISCORD_GUILD_ID in Railway Variables.');
+    logDebug('Registered ' + commands.length + ' global slash commands.');
+    logDebug('For faster command updates while testing, set DISCORD_GUILD_ID in Railway Variables.');
   }
 }
 
@@ -2430,14 +2436,14 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
-  console.log('Runtime process ID:', process.pid);
+  logDebug('Runtime process ID:', process.pid);
   logFfmpegVersion();
-  console.log('Logged in as ' + readyClient.user.tag);
+  logDebug('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic);
   startMusicRequestCleanupScheduler(readyClient);
-  console.log(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
+  logDebug(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
-  console.log('Bot activity is cleared. Use /activity to set it.');
+  logDebug('Bot activity is cleared. Use /activity to set it.');
   try {
     await registerCommands();
   } catch (error) {
