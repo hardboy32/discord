@@ -4,7 +4,7 @@ const {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder
 const FILE=process.env.COMMUNITY_DATA_FILE||'/app/data/community-data.json';
 let db={polls:{},giveaways:{},suggestions:{},verify:{},xp:{},tempvoice:{},economy:{},custom:{},streamAlerts:{},inviteStats:{}};
 function load(){try{db={...db,...JSON.parse(fs.readFileSync(FILE,'utf8'))}}catch(e){if(e.code!=='ENOENT')console.error('Community DB:',e.message)}}
-function save(){try{fs.mkdirSync(path.dirname(FILE),{recursive:true});fs.writeFileSync(FILE+'.tmp',JSON.stringify(db));fs.renameSync(FILE+'.tmp',FILE)}catch(e){console.error('Community save:',e.message)}}
+function save(){try{fs.mkdirSync(path.dirname(FILE),{recursive:true});fs.writeFileSync(FILE+'.tmp',JSON.stringify(db),{encoding:'utf8',mode:0o600});fs.renameSync(FILE+'.tmp',FILE)}catch(e){console.error('Community save:',e.message)}}
 let xpSaveTimer=null;
 function scheduleXpSave(){
   if(xpSaveTimer)return;
