@@ -11,8 +11,11 @@ lavalink:
       local: true
     playerUpdateInterval: 5
     trackStuckThresholdMs: 10000
-    bufferDurationMs: 400
-    frameBufferDurationMs: 5000
+    bufferDurationMs: 800
+    frameBufferDurationMs: 10000
+    opusEncodingQuality: 5
+    resamplingQuality: LOW
+    gc-warnings: true
   pluginsDir: "/app/data/lavalink-plugins"
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:e41dd95f8bd134b51e75080fb28cc805fecb431a"
@@ -48,6 +51,6 @@ logging:
   level:
     root: WARN
     dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO
-    dev.lavalink.youtube.track.YoutubeAudioTrack: DEBUG
-    dev.lavalink.youtube.YoutubeAudioSourceManager: DEBUG
-    com.sedmelluq.discord.lavaplayer.tools.ExceptionTools: DEBUG
+    dev.lavalink.youtube.track.YoutubeAudioTrack: INFO
+    dev.lavalink.youtube.YoutubeAudioSourceManager: INFO
+    com.sedmelluq.discord.lavaplayer.tools.ExceptionTools: WARN
