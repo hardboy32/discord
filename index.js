@@ -363,7 +363,7 @@ async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 
 async function createYoutubeStream(url) {
   await ensureYtDlpReady();
   const useBgutil = await ensureBgutilReady();
-  const args = ['--no-warnings', '--no-progress', '--format', 'bestaudio/best', '--output', '-', '--no-playlist'];
+  const args = ['--no-warnings', '--no-progress', '--format', 'bestaudio', '--output', '-', '--no-playlist'];
   const cookiePath = await createYtDlpCookieCopy();
   addYoutubeExtractorOptions(args, cookiePath, useBgutil);
   args.push(url);
