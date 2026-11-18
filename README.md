@@ -1,6 +1,6 @@
 # Discord Music + Moderation + AI Bot (Railway)
 
-This repository runs the Discord bot and its single-server web dashboard together in one Railway service. The dashboard uses Discord OAuth2 and is locked to server `686002315148394502` by default.
+This repository runs the Discord bot, Lavalink audio engine, and single-server web dashboard together in one Railway service and one container. Lavalink is bound to localhost; the dashboard uses Discord OAuth2 and is locked to server `686002315148394502` by default.
 
 ## Features
 
@@ -8,6 +8,7 @@ This repository runs the Discord bot and its single-server web dashboard togethe
 - `/play query` — search by song name or play a YouTube/SoundCloud URL
 - `/join`, `/queue`, `/skip`, `/pause`, `/resume`, `/stop`, `/leave`
 - Natural-language music requests, for example: `play the song ...`
+- Lavalink 4.2.2 with the YouTube Source plugin; text searches try SoundCloud first and then YouTube. Public playback does not require YouTube cookies by default.
 
 ### Interactive now-playing panel
 
@@ -81,20 +82,21 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 
 1. In Railway, create a new project and choose **Deploy from GitHub repo**.
 2. Select `hardboy32/discord` and the `main` branch.
-3. Let Railway detect the Node.js project automatically. Do not add an Infrlo build command, Dockerfile, or custom FFmpeg apt-install command.
+3. Keep the repository's `Dockerfile`. Railway will build the same service with Node.js 22, Java 17, and Lavalink; do not override it with Railpack or a custom build command.
 4. Set the variables listed below in the service's **Variables** tab.
-5. Deploy the service. The start command is `npm start`; it is also defined in `package.json`.
+5. Deploy the service. `npm start` runs `start.js`, which starts Lavalink first, waits for it to become healthy, then starts the Discord bot. Both processes share the same Railway container.
 6. Keep the service running as a single replica so multiple copies do not compete to run the same Discord bot token.
 
 ### Railway build/runtime settings
 
-- Builder: Railway's automatic Railpack detection
-- Runtime: Node.js 22 (minimum 22.12.0)
-- Build command: leave blank / automatic
-- Start command: `npm start`
+- Builder: Dockerfile (included in the repository)
+- Runtime: Node.js 22 and OpenJDK 17
+- Build command: handled by Dockerfile; no custom command is needed
+- Start command: `npm start` (starts Lavalink and the bot under one supervisor)
 - Public networking/domain: required for the dashboard
-- Port: Railway supplies `PORT`; no fixed port value is needed
-- FFmpeg: supplied by the `ffmpeg-static` npm dependency; no system package installation is configured
+- Port: Railway supplies `PORT` for the dashboard; Lavalink uses private `127.0.0.1:2333` only
+- FFmpeg: the `ffmpeg-static` npm dependency remains available for local media inspection; Lavalink handles streaming and voice playback
+- Memory: allow enough memory for both Node.js and Java. Reduce `LAVALINK_JAVA_XMX` if the container reaches its memory limit.
 
 ## Environment variables
 
@@ -106,6 +108,8 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 | `BOT_OWNER_ID` | Optional | Your Discord user ID for the owner-only `/activity` command |
 | `GROQ_API_KEY` | Optional | Enables AI chat replies |
 | `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b` |
+| `LAVALINK_PASSWORD` | Optional | Private localhost password; generated automatically when omitted |
+| `LAVALINK_JAVA_XMX` | Optional | Lavalink Java maximum heap; defaults to `512m` |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
 | `YOUTUBE_API_KEY` | Optional | YouTube live stream alerts |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Optional | Twitch live stream alerts |
@@ -119,19 +123,13 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 
 Never commit real bot tokens, API keys, or YouTube cookies to GitHub. Add secrets only in Railway Variables.
 
-### Configure YouTube cookies (optional)
+### Lavalink and YouTube
 
-The bot uses the official standalone `yt-dlp` binary for YouTube search and playback. It downloads the binary into the temporary runtime directory on first use; no extra Railway build command or Python installation is required.
+The Docker image downloads the official Lavalink 4.2.2 release and configures the YouTube Source plugin 1.18.2. The YouTube source tries several supported InnerTube clients in order. No YouTube cookie variable is required for normal public tracks. YouTube may still restrict playback from a hosting IP, so SoundCloud remains the alternate search source.
 
-If YouTube returns "Sign in to confirm you're not a bot", you can optionally provide a Netscape-format cookies file:
+Lavalink listens only on `127.0.0.1:2333`; it is not exposed as a public Railway port. The startup supervisor creates a random internal password automatically unless `LAVALINK_PASSWORD` is supplied. Java plugin dependencies are cached under the Railway Volume when it is mounted at `/app/data`.
 
-1. Use a separate YouTube/Google account that has no personal data, payment methods, or important services.
-2. Export cookies for YouTube in Netscape cookies.txt format. Treat this file like a password.
-3. Base64-encode the entire file (Linux/macOS: `base64 -w 0 cookies.txt`; Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))`).
-4. Add the resulting single-line value to Railway Variables as `YOUTUBE_COOKIES_B64`.
-5. Redeploy. The bot writes the decoded cookies to a permission-restricted temporary file and never prints cookie contents in logs.
-
-Do not send cookies in Discord, chat, GitHub issues, or repository files. Cookies can expire or be revoked, and this does not guarantee YouTube access if the hosting IP is blocked.
+The bot and Lavalink share one Railway service. Keep the deployment at one replica to avoid duplicate bot logins and competing audio nodes.
 
 ## Persistent storage (recommended)
 
@@ -143,7 +141,7 @@ Warning records are written to `data/warnings.json`. Railway's normal container 
 
 The app's default warning-file location is `/app/data/warnings.json` when Railway runs the project from `/app`. You do not need to set `WARNINGS_FILE` unless you want a different location.
 
-The bot's music queue and AI conversation history are held in memory and are intentionally not persisted; they reset when the service restarts.
+The bot's music queue and AI conversation history are held in memory and are intentionally not persisted; they reset when the service restarts. Lavalink's downloaded plugin dependencies are cached under `/app/data/.java-home` when the Railway Volume is mounted.
 
 ## Discord Developer Portal setup
 
