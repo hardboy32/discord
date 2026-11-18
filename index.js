@@ -930,16 +930,16 @@ async function findTrack(query, requestedBy) {
     durationSeconds: durationSecondsFromInfo(video),
   };
 }
-async function setMusicVoiceChannelStatus(queue, status) {
-  const channelId = queue && queue.voiceChannelId;
+async function setMusicVoiceChannelStatus(queue, status, channelIdOverride = null, force = false) {
+  const channelId = channelIdOverride || (queue && queue.voiceChannelId);
   if (!channelId) return;
   const normalized = status == null ? null : String(status).trim().slice(0, 500);
-  if (queue.voiceStatusText === normalized) return;
+  if (!force && queue && queue.voiceStatusText === normalized) return;
   try {
     await client.rest.put(Routes.channelVoiceStatus(channelId), {
       body: { status: normalized },
     });
-    queue.voiceStatusText = normalized;
+    if (queue) queue.voiceStatusText = normalized;
     console.log('Voice channel status updated:', normalized || '(cleared)');
   } catch (error) {
     console.warn(
@@ -948,6 +948,24 @@ async function setMusicVoiceChannelStatus(queue, status) {
     );
   }
 }
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  const botId = client.user && client.user.id;
+  if (!botId || oldState.id !== botId) return;
+
+  const previousChannelId = oldState.channelId;
+  if (!previousChannelId || previousChannelId === newState.channelId) return;
+
+  const queue = queues.get(oldState.guild.id);
+  // Force the API clear: the bot may have been removed manually, so local
+  // memory can no longer be trusted to know what status remains in Discord.
+  void setMusicVoiceChannelStatus(queue, null, previousChannelId, true);
+
+  if (queue && queue.voiceChannelId === previousChannelId) {
+    queue.voiceChannelId = null;
+  }
+  console.log('Bot left voice channel; clearing its previous channel status:', previousChannelId);
+});
 
 async function connectVoice(guild, channel, queue) {
   if (
