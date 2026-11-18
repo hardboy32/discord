@@ -12,8 +12,24 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 
-function ticketDashboardConfig(){try{const fs=require('node:fs');const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';return JSON.parse(fs.readFileSync(file,'utf8')).communityConfig?.tickets||{}}catch{return {}}}
-function ticketsEnabled(guildId){try{const fs=require('node:fs');const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';const settings=JSON.parse(fs.readFileSync(file,'utf8'));return settings.community?.tickets!==false}catch{return true}}
+const DASHBOARD_GUILD_ID=(process.env.DASHBOARD_GUILD_ID||'686002315148394502').trim();
+function ticketDashboardConfig(guildId){
+  if(guildId!==DASHBOARD_GUILD_ID)return {};
+  try{
+    const fs=require('node:fs');
+    const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';
+    return JSON.parse(fs.readFileSync(file,'utf8')).communityConfig?.tickets||{};
+  }catch{return {}}
+}
+function ticketsEnabled(guildId){
+  if(guildId!==DASHBOARD_GUILD_ID)return true;
+  try{
+    const fs=require('node:fs');
+    const file=process.env.DASHBOARD_SETTINGS_FILE||'/app/data/dashboard-settings.json';
+    const settings=JSON.parse(fs.readFileSync(file,'utf8'));
+    return settings.community?.tickets!==false;
+  }catch{return true}
+}
 function getCoreCommands() {
   return [
     new SlashCommandBuilder()
