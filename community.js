@@ -45,6 +45,8 @@ new SlashCommandBuilder().setName('verify-setup').setDescription('Create verific
 new SlashCommandBuilder().setName('role-button').setDescription('Create a self-role button').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).addChannelOption(o=>o.setName('channel').setDescription('Panel channel (or use dashboard default)').addChannelTypes(ChannelType.GuildText)).addRoleOption(o=>o.setName('role').setDescription('Toggle role (or use dashboard default)')).addStringOption(o=>o.setName('label').setDescription('Button label (or dashboard default)').setRequired(false).setMaxLength(80)),
 new SlashCommandBuilder().setName('rank').setDescription('Show XP rank').addUserOption(o=>o.setName('user').setDescription('Member')),
 new SlashCommandBuilder().setName('leaderboard').setDescription('Show XP leaderboard'),
+new SlashCommandBuilder().setName('invites').setDescription('Check how many members someone invited').addUserOption(o=>o.setName('user').setDescription('Member to check')),
+new SlashCommandBuilder().setName('invite-leaderboard').setDescription('Show the top inviters in this server'),
 new SlashCommandBuilder().setName('tempvoice-setup').setDescription('Set temporary voice creator').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).addChannelOption(o=>o.setName('join_channel').setDescription('Join-to-create channel (or use dashboard default)').addChannelTypes(ChannelType.GuildVoice)).addChannelOption(o=>o.setName('category').setDescription('Optional category').addChannelTypes(ChannelType.GuildCategory))
 
 ,new SlashCommandBuilder().setName('daily').setDescription('Claim daily coins')
