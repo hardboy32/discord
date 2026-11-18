@@ -454,6 +454,26 @@ function attachCoreModules(client, getSettings) {
     sticker.name + ' (' + sticker.id + ')', 0xd65b70));
   client.on(Events.GuildStickerUpdate, async (oldSticker, newSticker) => sendLog(newSticker.guild, 'stickerUpdate', 'Sticker updated',
     newSticker.name + ' (' + newSticker.id + ')'));
+  client.on(Events.GuildSoundboardSoundsUpdate, async (sounds, guild) => sendLog(guild, 'soundboardBulkUpdate', 'Soundboard sounds changed',
+    'Updated soundboard items: ' + sounds.size));
+  client.on(Events.VoiceChannelEffectSend, async effect => {
+    const detail = effect.soundboardSound ? 'Sound: ' + effect.soundboardSound.name :
+      'Emoji: ' + (effect.emoji ? String(effect.emoji) : 'voice effect');
+    await sendLog(effect.guild, 'voiceEffect', 'Voice channel effect used',
+      'Member ID: ' + effect.userId + '\nChannel: <#' + effect.channelId + '>\n' + detail);
+  });
+  client.on(Events.TypingStart, async typing => {
+    if (!typing.guild || !typing.user || typing.user.bot) return;
+    await sendLog(typing.guild, 'typingStart', 'Member started typing',
+      'Member: ' + (typing.user.tag || typing.user.username) + '\nChannel: <#' + typing.channel.id + '>');
+  });
+  client.on(Events.ApplicationCommandPermissionsUpdate, async update => {
+    const guild = client.guilds.cache.get(update.guildId);
+    if (!guild) return;
+    await sendLog(guild, 'applicationCommandPermissionsUpdate', 'Slash-command permissions changed',
+      'Command ID: ' + update.id + '\nApplication ID: ' + update.applicationId +
+      '\nPermission entries: ' + update.permissions.length);
+  });
   client.on('guildSoundboardSoundCreate', async sound => sendLog(sound.guild, 'soundboardCreate', 'Soundboard sound created', sound.name + ' (' + sound.id + ')'));
   client.on('guildSoundboardSoundUpdate', async (oldSound, newSound) => sendLog(newSound.guild, 'soundboardUpdate', 'Soundboard sound updated', newSound.name + ' (' + newSound.id + ')'));
   client.on('guildSoundboardSoundDelete', async sound => sendLog(sound.guild, 'soundboardDelete', 'Soundboard sound deleted', sound.name + ' (' + sound.id + ')', 0xd65b70));
