@@ -8,7 +8,7 @@ This repository runs the Discord bot, Lavalink audio engine, and single-server w
 - `/play query` — search by song name or play a YouTube/SoundCloud URL
 - `/join`, `/queue`, `/skip`, `/pause`, `/resume`, `/stop`, `/leave`
 - Natural-language music requests, for example: `play the song ...`
-- Lavalink 4.2.2 with the YouTube Source plugin; text searches try SoundCloud first and then YouTube. Public playback does not require YouTube cookies by default.
+- Lavalink 4.2.2 with the YouTube Source plugin; title searches try YouTube first and use SoundCloud as a fallback. Public YouTube playback does not require account cookies by default.
 
 ### Interactive now-playing panel
 
@@ -37,7 +37,6 @@ When a track starts, the bot posts or updates one music player message in the te
 - `/server-restore` — recreate missing roles and channels from that JSON (does not restore messages, member assignments, category nesting, or permission overwrites).
 - `/invites` and `/invite-leaderboard` — track invite attribution and show inviter rankings (the bot needs Manage Server permission to fetch invites).
 - `/stream-alert-setup` — monitor Twitch, YouTube, and Kick creators and post live alerts in a selected channel. Add `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` for Twitch, and `YOUTUBE_API_KEY` for YouTube; Kick uses a public endpoint that may change.
-- `/stream-alert-setup` — monitor Twitch, YouTube, and Kick creators and post live alerts in a selected channel. Add `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` for Twitch, and `YOUTUBE_API_KEY` for YouTube. Kick uses a public endpoint that may change.
 - Community configuration, votes, giveaway entries, and XP are stored in `/app/data/community-data.json` (keep the Railway Volume mounted at `/app/data`).
 
 ### Support tickets
