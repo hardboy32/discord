@@ -888,6 +888,9 @@ async function playTrackFromDashboard(guildId, voiceChannelId, url, requestedBy 
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(track);
   if (!queue.current) void playNext(guild.id);
+  console.log('Dashboard music request:', track.title, '->', channel.name, '| queue position:', position);
+  return { track, position, channelName: channel.name };
+}
 
 async function getDashboardMusicStatus(guildId) {
   const queue = queues.get(guildId);
@@ -944,10 +947,6 @@ async function controlDashboardMusic(guildId, action, values = {}) {
     return { queued: true, position: requested, endAt };
   }
   throw new Error('Unknown music player action.');
-}
-
-  console.log('Dashboard music request:', track.title, '->', channel.name, '| queue position:', position);
-  return { track, position, channelName: channel.name };
 }
 
 function getTrackThumbnail(...candidates) {
