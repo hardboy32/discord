@@ -529,13 +529,15 @@ function getQueue(guildId) {
 
 function durationSecondsFromInfo(info) {
   if (!info || typeof info !== 'object') return 0;
-  for (const value of [info.duration, info.duration_seconds, info.durationInSec]) {
+  for (const value of [info.duration, info.duration_seconds, info.durationSeconds, info.durationInSec, info.length_seconds]) {
     const number = Number(value);
     if (Number.isFinite(number) && number > 0) return number;
   }
-  const milliseconds = Number(info.duration_ms);
-  if (Number.isFinite(milliseconds) && milliseconds > 0) return milliseconds / 1000;
-  const raw = String(info.duration_string || info.durationRaw || '').trim();
+  for (const value of [info.duration_ms, info.durationMs]) {
+    const milliseconds = Number(value);
+    if (Number.isFinite(milliseconds) && milliseconds > 0) return milliseconds / 1000;
+  }
+  const raw = String(info.duration_string || info.durationRaw || info.duration || '').trim();
   if (/^\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
   if (/^\d{1,3}:\d{1,2}(?::\d{1,2})?$/.test(raw)) {
     const parts = raw.split(':').map(Number);
@@ -709,7 +711,8 @@ async function findSoundCloudTrack(query, requestedBy) {
     .map(item => ({
       title: item.name || item.title || query,
       url: item.permalink || item.permalink_url || item.url,
-      duration: item.durationRaw || durationText(item.durationInSec || 0),
+      duration: durationText(durationSecondsFromInfo(item)),
+      durationSeconds: durationSecondsFromInfo(item),
       thumbnail: getTrackThumbnail(item.thumbnail, item.artwork_url, item.thumbnail_url),
       requestedBy,
       searchQuery: query,
@@ -868,12 +871,12 @@ async function findTrack(query, requestedBy) {
   return {
     title: video.title || input,
     url: video.webpage_url,
-    duration: durationText(video.duration || 0),
+    duration: durationText(durationSecondsFromInfo(video)),
     thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
     requestedBy,
     searchQuery: input,
     source: 'ytdlp',
-    durationSeconds: Number(video.duration || 0),
+    durationSeconds: durationSecondsFromInfo(video),
   };
 }
 async function connectVoice(guild, channel, queue) {
