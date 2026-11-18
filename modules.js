@@ -246,7 +246,7 @@ function attachCoreModules(client, getSettings) {
     await sendLog(newMessage.guild, 'messageEdit', 'Message edited',
       'Author: ' + author + '\\nChannel: <#' + newMessage.channelId + '>\\nMessage content was not recorded.', 0xd69a4b);
   });
-  client.on(Events.MessageDeleteBulk, async (messages, channel) => {
+  client.on(Events.MessageBulkDelete, async (messages, channel) => {
     const guild = channel && channel.guild || messages.first()?.guild;
     if (!guild) return;
     await sendLog(guild, 'messageDeleteBulk', 'Messages deleted in bulk',
@@ -442,10 +442,18 @@ function attachCoreModules(client, getSettings) {
       thread.name + '\\nAdded: ' + addedMembers.size + ' • Removed: ' + removedMembers.size);
   });
 
-  client.on(Events.GuildEmojisUpdate, async guild => sendLog(guild, 'emojiUpdate', 'Server emojis changed',
-    'The server emoji list was updated.'));
-  client.on(Events.GuildStickersUpdate, async guild => sendLog(guild, 'stickerUpdate', 'Server stickers changed',
-    'The server sticker list was updated.'));
+  client.on(Events.GuildEmojiCreate, async emoji => sendLog(emoji.guild, 'emojiUpdate', 'Emoji created',
+    emoji.name + ' (' + emoji.id + ')'));
+  client.on(Events.GuildEmojiDelete, async emoji => sendLog(emoji.guild, 'emojiUpdate', 'Emoji deleted',
+    emoji.name + ' (' + emoji.id + ')', 0xd65b70));
+  client.on(Events.GuildEmojiUpdate, async (oldEmoji, newEmoji) => sendLog(newEmoji.guild, 'emojiUpdate', 'Emoji updated',
+    newEmoji.name + ' (' + newEmoji.id + ')'));
+  client.on(Events.GuildStickerCreate, async sticker => sendLog(sticker.guild, 'stickerUpdate', 'Sticker created',
+    sticker.name + ' (' + sticker.id + ')'));
+  client.on(Events.GuildStickerDelete, async sticker => sendLog(sticker.guild, 'stickerUpdate', 'Sticker deleted',
+    sticker.name + ' (' + sticker.id + ')', 0xd65b70));
+  client.on(Events.GuildStickerUpdate, async (oldSticker, newSticker) => sendLog(newSticker.guild, 'stickerUpdate', 'Sticker updated',
+    newSticker.name + ' (' + newSticker.id + ')'));
   client.on('guildSoundboardSoundCreate', async sound => sendLog(sound.guild, 'soundboardCreate', 'Soundboard sound created', sound.name + ' (' + sound.id + ')'));
   client.on('guildSoundboardSoundUpdate', async (oldSound, newSound) => sendLog(newSound.guild, 'soundboardUpdate', 'Soundboard sound updated', newSound.name + ' (' + newSound.id + ')'));
   client.on('guildSoundboardSoundDelete', async sound => sendLog(sound.guild, 'soundboardDelete', 'Soundboard sound deleted', sound.name + ' (' + sound.id + ')', 0xd65b70));
