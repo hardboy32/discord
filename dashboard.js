@@ -354,6 +354,8 @@ $('playerProgressSlider').onpointerdown=()=>{dashboardPlayerScrubbing=true};
 $('playerProgressSlider').onkeydown=()=>{dashboardPlayerScrubbing=true};
 $('playerProgressSlider').oninput=()=>{const value=Number($('playerProgressSlider').value);$('playerSeekPosition').value=value;renderDashboardPlayerProgress(value)};
 $('playerProgressSlider').onchange=async()=>{const value=Number($('playerProgressSlider').value);$('playerSeekPosition').value=value;try{await controlDashboardPlayer('seek',{position:value})}catch{}finally{dashboardPlayerScrubbing=false;await refreshDashboardPlayer()}};
+$('playerProgressSlider').onpointerup=()=>{if(dashboardPlayerScrubbing)$('playerProgressSlider').dispatchEvent(new Event('change',{bubbles:true}))};
+$('playerProgressSlider').onpointercancel=()=>{if(dashboardPlayerScrubbing){dashboardPlayerScrubbing=false;refreshDashboardPlayer()}};
 
 $('playerPause').onclick=()=>controlDashboardPlayer('pause').catch(()=>{});
 $('playerLoop').onclick=()=>controlDashboardPlayer('loop').catch(()=>{});
