@@ -257,7 +257,10 @@ function readBody(req, limit = 20000) {
   });
 }
 async function discord(pathname, token) {
-  const response = await fetch('https://discord.com/api/v10' + pathname, { headers: { authorization: 'Bearer ' + token } });
+  const response = await fetch('https://discord.com/api/v10' + pathname, {
+    headers: { authorization: 'Bearer ' + token },
+    signal: AbortSignal.timeout(12000),
+  });
   if (!response.ok) throw new Error('Discord API returned ' + response.status);
   return response.json();
 }
@@ -599,7 +602,18 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         const state = url.searchParams.get('state');
         if (!state || !states.has(state) || states.get(state) < Date.now()) return send(res, 400, 'Invalid login state.', 'text/plain');
         states.delete(state);
-        const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'authorization_code', code: url.searchParams.get('code') || '', redirect_uri: REDIRECT_URI }) });
+        const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            grant_type: 'authorization_code',
+            code: url.searchParams.get('code') || '',
+            redirect_uri: REDIRECT_URI,
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
         if (!tokenResponse.ok) return send(res, 401, 'Discord login failed.', 'text/plain');
         const tokenData = await tokenResponse.json();
         const [profile, guilds] = await Promise.all([discord('/users/@me', tokenData.access_token), discord('/users/@me/guilds', tokenData.access_token)]);
