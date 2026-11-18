@@ -110,7 +110,7 @@ function saveMusicPanelState() {
   try {
     fs.mkdirSync(path.dirname(MUSIC_PANEL_STATE_FILE), { recursive: true });
     const temporaryFile = MUSIC_PANEL_STATE_FILE + '.tmp';
-    fs.writeFileSync(temporaryFile, JSON.stringify(musicPanelState, null, 2), 'utf8');
+    fs.writeFileSync(temporaryFile, JSON.stringify(musicPanelState, null, 2), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(temporaryFile, MUSIC_PANEL_STATE_FILE);
   } catch (error) {
     console.warn('Music panel state could not be saved:', error.message || error);
@@ -397,7 +397,7 @@ function loadWarnings() {
     fs.mkdirSync(path.dirname(WARNINGS_FILE), { recursive: true });
     if (!fs.existsSync(WARNINGS_FILE)) fs.writeFileSync(WARNINGS_FILE, '{}', 'utf8');
     const value = JSON.parse(fs.readFileSync(WARNINGS_FILE, 'utf8'));
-    return value && typeof value === 'object' ? value : {};
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   } catch (error) {
     console.error('Warnings load failed:', error.message);
     return {};
@@ -408,7 +408,9 @@ let warnings = loadWarnings();
 
 function saveWarnings() {
   fs.mkdirSync(path.dirname(WARNINGS_FILE), { recursive: true });
-  fs.writeFileSync(WARNINGS_FILE, JSON.stringify(warnings, null, 2), 'utf8');
+  const temporaryFile = WARNINGS_FILE + '.tmp';
+  fs.writeFileSync(temporaryFile, JSON.stringify(warnings, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(temporaryFile, WARNINGS_FILE);
 }
 
 function getQueue(guildId) {
