@@ -110,6 +110,103 @@ function send(res, status, body, type) {
   res.writeHead(status, { 'content-type': type || 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
+
+function legalPage(title, updated, sections) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow"><title>${title} • HARD BOY</title><style>
+:root{color-scheme:dark;--bg:#0b1020;--line:#293752;--muted:#a6b4ce;--text:#edf2ff;--accent:#9aa5ff}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 18px;background:radial-gradient(ellipse at 15% 0,#1b2850 0,transparent 42%),var(--bg);color:var(--text);font:16px/1.7 Inter,system-ui,Segoe UI,sans-serif}
+main{width:100%;max-width:900px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.brand{font-size:17px;font-weight:850;letter-spacing:.5px}.brand span{color:var(--accent)}
+a{color:#b9c2ff;text-decoration:none}a:hover{text-decoration:underline}
+article{background:linear-gradient(145deg,#17233b,#121b2e);border:1px solid var(--line);border-radius:18px;padding:clamp(20px,4vw,38px);box-shadow:0 14px 35px #0002}
+h1{font-size:clamp(29px,5vw,38px);line-height:1.2;margin:0 0 8px}
+h2{font-size:20px;line-height:1.35;margin:28px 0 9px}
+p{margin:10px 0;color:#dce5f7}
+li{margin:7px 0;color:#dce5f7}
+ul{padding-left:23px}
+.meta{color:var(--muted);font-size:13px;margin-bottom:24px}
+footer{color:var(--muted);font-size:13px;text-align:center;margin:20px 0}
+code{overflow-wrap:anywhere;color:#c5ccff}
+@media(max-width:560px){body{padding:18px 10px}article{border-radius:13px}h2{font-size:18px}}
+</style></head><body><main><header><div class="brand">HARD<span>BOY</span> • DISCORD APP</div><a href="/">Dashboard home ↗</a></header><article><h1>${title}</h1><div class="meta">Effective date: ${updated} · Last updated: ${updated}</div>${sections}</article><footer>HARD BOY is an independently operated application and is not affiliated with Discord, Inc.</footer></main></body></html>`;
+}
+
+const PRIVACY_POLICY_HTML = `
+<p>This Privacy Policy describes how the HARD BOY Discord Bot and its optional web dashboard (together, the “Service”) process information when people use the bot in Discord or sign in to the dashboard.</p>
+<p><strong>Application:</strong> HARD BOY Discord Bot · <strong>Discord Application ID:</strong> 812717050753450004 · <strong>Dashboard:</strong> https://discordbot.up.railway.app</p>
+<h2>1. Information the Service processes</h2>
+<ul>
+<li><strong>Discord account and server information:</strong> Discord user IDs, usernames or display names, server IDs and names, channel and role IDs and names, and permission information needed to provide bot features and authorize dashboard access.</li>
+<li><strong>Dashboard sign-in:</strong> the dashboard uses Discord OAuth2 with the identify and guilds scopes. It stores the minimum session information (user ID, display name, server ID and expiry) for up to 30 days. The Discord OAuth access token is used for sign-in and is not saved to disk. A signed, HttpOnly, Secure session cookie is stored in your browser.</li>
+<li><strong>Commands and feature records:</strong> depending on enabled features, this can include warning reasons and moderator names; XP and level totals; virtual currency balances; poll votes; giveaway entries and winners; invite attribution; suggestions and custom responses; stream-alert creator names; and feature configuration. Records may contain Discord user, server, channel, message or role IDs.</li>
+<li><strong>Messages and moderation:</strong> when AutoMod is enabled, the bot reads message text to check the configured invite-link, blocked-word, spam and mass-mention rules. A matching message may be deleted; the moderation log records the author and reason, not the deleted text. Message edit/delete event logs record the author and channel and do not record message content.</li>
+<li><strong>Music requests and media:</strong> the bot processes song titles or links submitted to the configured music-request channel and track metadata needed for playback. Music searches and links may be sent to the relevant music source or media extraction provider to resolve playback. Uploaded audio files and music artwork may be stored on the operator's Railway storage volume.</li>
+<li><strong>AI messages (only when AI is enabled and invoked):</strong> the prompt directed to the bot and a limited amount of recent conversation context are sent to Groq to generate a reply. The bot keeps a short conversation history temporarily in process memory; it is not written to persistent bot data files and is cleared when the bot process restarts.</li>
+<li><strong>Support tickets:</strong> if ticket features are enabled, the bot creates private ticket channels. When a ticket is closed, it can export up to the latest 1,000 messages to a transcript in the channel selected by the server administrator. A transcript may contain message text, author names and attachment URLs.</li>
+<li><strong>Browser data:</strong> the dashboard uses a session cookie for authentication. It may store up to 20 recently played track titles and URLs in the user's own browser local storage.</li>
+</ul>
+<h2>2. How information is used</h2>
+<p>Information is used as needed to authenticate server administrators; check permissions; process commands and interactions; provide music, moderation, welcome, ticket, community, XP, economy and notification features; maintain configuration and feature state; protect the Service from abuse; and troubleshoot failures.</p>
+<h2>3. Storage and retention</h2>
+<ul>
+<li>Persistent bot settings, warnings, community feature data, music-panel references, uploaded welcome artwork, fallback music artwork and saved audio files are stored in the Railway volume configured by the operator (normally <code>/app/data</code>).</li>
+<li>Persistent feature records are generally kept until a server administrator or operator deletes them, clears the relevant feature data, or removes the stored bot data. Disabling a feature does not necessarily delete records already created by it.</li>
+<li>Dashboard sign-in sessions expire after 30 days. Users can also sign out to clear their browser session.</li>
+<li>AI conversation context is temporary in-memory data and is not persisted to disk by the Service.</li>
+<li>Ticket transcripts and moderation/event logs posted to Discord remain subject to the server's message retention, access and deletion settings.</li>
+<li>Music history in the dashboard is stored locally in the user's browser, not in the bot's server-side database.</li>
+</ul>
+<h2>4. Service providers and sharing</h2>
+<p>The Service does not sell personal information and does not use it for advertising. Information may be processed by these providers when the related feature is used:</p>
+<ul>
+<li><strong>Discord:</strong> account authentication, server, channel, role and message/interaction features.</li>
+<li><strong>Railway:</strong> hosting for the bot, dashboard and configured persistent storage.</li>
+<li><strong>Groq:</strong> receives AI prompts and limited recent context when the AI feature is enabled and invoked.</li>
+<li><strong>Music and streaming providers:</strong> music source and media extraction providers may receive search terms or media links to resolve playback. Twitch, YouTube/Google or Kick may be contacted to check configured live-stream alerts.</li>
+</ul>
+<p>These providers process information under their own terms and privacy policies. AI prompts are not sent to Groq when AI is disabled or not invoked. Stream-alert creator names are sent to a relevant platform only when that integration is used.</p>
+<h2>5. Access, choices and deletion requests</h2>
+<p>Server administrators control which optional features are enabled, which channels receive logs and transcripts, and which permissions the bot receives. Administrators can clear warnings using the warning-management commands. Other saved feature data can be removed by the server administrator or Service operator from the relevant bot storage. Removing the bot from a server stops its server features, but does not automatically remove messages, transcripts or records already posted or stored.</p>
+<p>To ask about personal information or request access, correction or deletion of data held by the Service, contact the developer through the <a href="https://github.com/hardboy32/discord/issues" target="_blank" rel="noopener noreferrer">project support page on GitHub</a>. Do not include sensitive personal information in a public issue; ask for a private way to provide details. Requests may require enough information to identify the relevant Discord server and account.</p>
+<h2>6. Security</h2>
+<p>The dashboard restricts management functions to users with server-owner, Administrator or Manage Server permissions and uses signed, secure session cookies. Persistent files are stored on the configured hosting volume. No internet service can guarantee absolute security; server administrators should manage bot permissions, staff access and backups carefully.</p>
+<h2>7. Children's privacy</h2>
+<p>The Service is intended for use within Discord and is not designed to collect information directly from children. Users must meet the minimum age required by Discord and the laws that apply to them.</p>
+<h2>8. Changes and contact</h2>
+<p>This Policy may be updated when the Service's features or data practices change. The latest version will be published at this URL. For privacy questions or requests, use the <a href="https://github.com/hardboy32/discord/issues" target="_blank" rel="noopener noreferrer">project support page</a> and avoid posting personal data publicly.</p>
+`;
+
+const TERMS_OF_SERVICE_HTML = `
+<p>These Terms of Service (“Terms”) govern your use of the HARD BOY Discord Bot and its optional web dashboard (together, the “Service”). By using or inviting the Service, you agree to these Terms. If you do not agree, do not use the Service.</p>
+<p><strong>Application:</strong> HARD BOY Discord Bot · <strong>Discord Application ID:</strong> 812717050753450004 · <strong>Dashboard:</strong> https://discordbot.up.railway.app</p>
+<h2>1. Eligibility and Discord rules</h2>
+<p>You must meet Discord's minimum age requirement and any higher minimum age required by the laws that apply to you. Your use of the Service must comply with Discord's Terms of Service, Community Guidelines, Developer Terms of Service and Developer Policy.</p>
+<h2>2. Acceptable use</h2>
+<ul>
+<li>Do not use the Service to break the law, harass or threaten people, distribute malware, spam users, evade moderation, or infringe another person's rights.</li>
+<li>Do not attempt to disrupt, overload, reverse engineer or gain unauthorized access to the Service, its hosting environment or another user's data.</li>
+<li>Do not use music, file, AI, moderation or community features in a way that violates the rules or rights of a relevant third-party provider.</li>
+<li>Do not submit passwords, payment details or other highly sensitive information through bot commands, AI prompts or support tickets unless strictly necessary and safe to do so.</li>
+</ul>
+<h2>3. Server administrators and permissions</h2>
+<p>Server owners and administrators are responsible for deciding whether to install the bot, granting only the permissions needed, configuring channels and roles, and informing members about features that process messages or create logs and transcripts. Administrators are responsible for access to private ticket channels, transcript channels and server backups. The Service may not work correctly if required Discord permissions or intents are missing.</p>
+<h2>4. User content</h2>
+<p>You remain responsible for messages, links, audio files, artwork, suggestions, custom responses and other content you submit or cause the Service to process. You must have the rights and permissions needed to provide that content and allow the Service to process it for the feature you use. You grant the Service the limited permission needed to process and display that content to provide the requested functionality.</p>
+<h2>5. AI and third-party features</h2>
+<p>AI responses are generated by a third-party AI provider and may be incomplete, inaccurate or inappropriate. Do not rely on them as professional advice or as the sole basis for important decisions. Music playback, media extraction and live-stream alerts depend on third-party platforms and may become unavailable or change without notice. You are responsible for complying with those providers' terms and respecting copyright and other rights when sharing or playing content.</p>
+<h2>6. Availability and changes</h2>
+<p>The Service is provided without a promise of uninterrupted or error-free operation. Features may be modified, suspended or discontinued for maintenance, security, legal, platform or operational reasons. The Service may enforce rate limits or restrict access where necessary to protect the bot, Discord communities or infrastructure.</p>
+<h2>7. Disclaimers and liability</h2>
+<p>To the maximum extent permitted by applicable law, the Service is provided “as is” and “as available”, without warranties of any kind. Nothing in these Terms excludes or limits liability where such exclusion or limitation is not permitted by law. To the extent permitted by law, the operator is not responsible for indirect or consequential loss, third-party platform outages, user-generated content, or actions taken by server administrators using the Service.</p>
+<h2>8. Suspension and termination</h2>
+<p>You may stop using the Service at any time and a server administrator may remove the bot from a server. The operator may suspend or terminate access where these Terms are violated, where required by law or platform rules, or where continued operation presents a security or operational risk.</p>
+<h2>9. Changes to these Terms</h2>
+<p>These Terms may be updated as the Service changes. The current version will be published at this URL. Continued use after an updated version is published means you accept the updated Terms to the extent permitted by applicable law.</p>
+<h2>10. Contact</h2>
+<p>For questions about these Terms, contact the developer through the <a href="https://github.com/hardboy32/discord/issues" target="_blank" rel="noopener noreferrer">project support page on GitHub</a>. Do not post private or sensitive information in a public issue.</p>
+`;
 function readBody(req, limit = 20000) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -433,6 +530,8 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
     try {
       const url = new URL(req.url, 'http://localhost');
       if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true });
+      if (req.method === 'GET' && url.pathname === '/privacy') return send(res, 200, legalPage('Privacy Policy', 'November 18, 2026', PRIVACY_POLICY_HTML), 'text/html; charset=utf-8');
+      if (req.method === 'GET' && url.pathname === '/terms') return send(res, 200, legalPage('Terms of Service', 'November 18, 2026', TERMS_OF_SERVICE_HTML), 'text/html; charset=utf-8');
       if (req.method === 'GET' && url.pathname === '/') return send(res, 200, html(), 'text/html; charset=utf-8');
       if (req.method === 'GET' && url.pathname === '/auth/login') {
         const state = crypto.randomBytes(24).toString('hex');
