@@ -527,6 +527,68 @@ function saveMusicRequestCleanupState() {
   }
 }
 
+const musicRequestMessageCleanupQueues = new Map();
+
+async function deleteOlderMusicRequestMessages(channel, keepMessageId) {
+  let before;
+  let deletedCount = 0;
+  const bulkDeleteCutoff = Date.now() - (14 * 24 * 60 * 60 * 1000) + 60_000;
+
+  while (true) {
+    const fetchOptions = { limit: 100 };
+    if (before) fetchOptions.before = before;
+    const page = await channel.messages.fetch(fetchOptions);
+    if (!page.size) break;
+
+    const oldRequests = page.filter(message =>
+      message.id !== keepMessageId &&
+      message.author && !message.author.bot && !message.webhookId
+    );
+    const recentMessages = oldRequests.filter(message => message.createdTimestamp >= bulkDeleteCutoff);
+    const olderMessages = oldRequests.filter(message => message.createdTimestamp < bulkDeleteCutoff);
+
+    if (recentMessages.size > 1) {
+      const deleted = await channel.bulkDelete(recentMessages, true);
+      deletedCount += deleted.size;
+    } else if (recentMessages.size === 1) {
+      await recentMessages.first().delete().then(() => { deletedCount += 1; }).catch(error => {
+        if (error.code !== 10008 && error.code !== 10003) throw error;
+      });
+    }
+
+    for (const oldMessage of olderMessages.values()) {
+      await oldMessage.delete().then(() => { deletedCount += 1; }).catch(error => {
+        if (error.code !== 10008 && error.code !== 10003) throw error;
+      });
+    }
+
+    const oldestMessage = page.last();
+    if (!oldestMessage || oldestMessage.id === before || page.size < 100) break;
+    before = oldestMessage.id;
+  }
+
+  return deletedCount;
+}
+
+async function keepOnlyLatestMusicRequestMessage(message) {
+  const channelId = message.channelId;
+  const previous = musicRequestMessageCleanupQueues.get(channelId) || Promise.resolve();
+  const current = previous.catch(() => {}).then(async () => {
+    const deletedCount = await deleteOlderMusicRequestMessages(message.channel, message.id);
+    console.log('Music request channel kept only the latest member request:', message.id,
+      '| removed previous requests:', deletedCount);
+  });
+  musicRequestMessageCleanupQueues.set(channelId, current);
+
+  try {
+    await current;
+  } finally {
+    if (musicRequestMessageCleanupQueues.get(channelId) === current) {
+      musicRequestMessageCleanupQueues.delete(channelId);
+    }
+  }
+}
+
 async function deleteMemberMessagesFromMusicRequestChannel(channel) {
   let before;
   let deletedCount = 0;
@@ -2090,6 +2152,11 @@ client.on(Events.MessageCreate, async (message) => {
     const query = String(message.content || '').trim();
     if (!query || query.startsWith('/')) return;
     try {
+      try {
+        await keepOnlyLatestMusicRequestMessage(message);
+      } catch (cleanupError) {
+        console.warn('Could not remove previous music request messages. Check Manage Messages permission:', cleanupError.message || cleanupError);
+      }
       const result = await enqueueTrackFromMessage(message, query);
       if (result.error) {
         await message.reply({ content: result.error, allowedMentions: { repliedUser: false } }).catch(() => {});
