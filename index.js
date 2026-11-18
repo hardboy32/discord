@@ -1164,7 +1164,7 @@ function buildMusicPanel(queue, track) {
       { name: 'Loop Mode', value: loopModeLabel(queue.loopMode), inline: true }
     )
     .setFooter({ text: 'Use the buttons below to control playback' });
-  if (track.thumbnail) embed.setImage(track.thumbnail);
+  embed.setImage(track.thumbnail || 'https://media1.tenor.com/m/j-OaGPLxL0QAAAAC/adventure-time.gif');
 
   const paused = queue.player.state.status === AudioPlayerStatus.Paused;
   const row = new ActionRowBuilder().addComponents(
