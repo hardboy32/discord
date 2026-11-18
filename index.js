@@ -939,13 +939,13 @@ async function probeLocalAudioDuration(filePath) {
     const timeout = setTimeout(() => finish(0), 10000);
     child.stderr.on('data', chunk => {
       stderr = (stderr + chunk.toString()).slice(-12000);
-      const match = stderr.match(/Duration:\\s*(\\d{1,3}):(\\d{2}):(\\d{2}(?:\\.\\d+)?)/i);
+      const match = stderr.match(/Duration:\s*(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)/i);
       if (match) finish(Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]));
     });
     child.on('error', () => finish(0));
     child.on('close', () => {
       if (!settled) {
-        const match = stderr.match(/Duration:\\s*(\\d{1,3}):(\\d{2}):(\\d{2}(?:\\.\\d+)?)/i);
+        const match = stderr.match(/Duration:\s*(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)/i);
         finish(match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0);
       }
     });
