@@ -118,7 +118,7 @@ Generate the session secret locally with `node -e "console.log(require('node:cry
 | `DISCORD_CLIENT_SECRET` | Dashboard | Discord OAuth2 Client Secret |
 | `DASHBOARD_SESSION_SECRET` | Dashboard | Long random secret used to sign login sessions |
 | `DASHBOARD_REDIRECT_URI` | Dashboard | Exact Railway URL ending in `/auth/callback` |
-| `DASHBOARD_SETTINGS_FILE` | Optional | Settings JSON path; default `/app/data/dashboard-settings.json` |\n| `YOUTUBE_COOKIES_B64` | Optional | Base64-encoded Netscape-format YouTube cookies; helps yt-dlp access videos that require a signed-in session |
+| `DASHBOARD_SETTINGS_FILE` | Optional | Settings JSON path; default `/app/data/dashboard-settings.json` |
 | `WARNINGS_FILE` | Optional | Warnings JSON path; default is `./data/warnings.json` |
 
 Never commit real bot tokens, API keys, or YouTube cookies to GitHub. Add secrets only in Railway Variables.
@@ -166,7 +166,9 @@ Groq free-tier rate limits apply and can change. If the key is absent, the bot's
 - **Bot does not log in:** check `DISCORD_TOKEN` and confirm the token has not been reset.
 - **AI does not answer:** check `GROQ_API_KEY`, the selected model, and the Discord Message Content Intent setting.
 - **Slash commands do not appear:** temporarily set `DISCORD_GUILD_ID` to your test server ID and confirm the bot was invited with `applications.commands`.
-- **YouTube asks you to sign in:** configure `YOUTUBE_COOKIES_B64` with a Base64-encoded Netscape cookies file in Railway Variables. Cookies may expire, and YouTube may still block the hosting IP.\n- **Music does not play:** check Railway logs for source extraction/network errors and confirm the bot has Connect and Speak permissions. YouTube and SoundCloud extraction can be affected by upstream changes.
+- **Lavalink does not become ready:** check the Java/Lavalink startup messages in Railway logs and confirm the Dockerfile build completed.
+- **YouTube playback fails:** try a SoundCloud result or inspect Lavalink logs for client/source errors. The YouTube plugin uses several clients, but YouTube can still restrict a hosting IP.
+- **Music does not play:** confirm the bot has Connect and Speak permissions and that the Lavalink node reports ready before testing `/play`.
 - **Warnings disappear after redeploy:** confirm the Railway Volume is mounted at `/app/data`.
 
 ## Local checks
