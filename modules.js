@@ -20,9 +20,9 @@ function getCoreCommands() {
       .setName('ticket-setup')
       .setDescription('Create a support ticket panel')
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-      .addChannelOption(option => option.setName('panel_channel').setDescription('Where users open tickets').addChannelTypes(ChannelType.GuildText).setRequired(true))
-      .addRoleOption(option => option.setName('staff_role').setDescription('Role that can view and manage tickets').setRequired(true))
-      .addChannelOption(option => option.setName('transcript_channel').setDescription('Where closed ticket transcripts are sent').addChannelTypes(ChannelType.GuildText).setRequired(true))
+      .addChannelOption(option => option.setName('panel_channel').setDescription('Where users open tickets (or use dashboard default)').addChannelTypes(ChannelType.GuildText))
+      .addRoleOption(option => option.setName('staff_role').setDescription('Role that can view and manage tickets (or dashboard default)'))
+      .addChannelOption(option => option.setName('transcript_channel').setDescription('Where closed ticket transcripts are sent (or dashboard default)').addChannelTypes(ChannelType.GuildText))
       .addChannelOption(option => option.setName('category').setDescription('Optional category for ticket channels').addChannelTypes(ChannelType.GuildCategory)),
   ];
 }
@@ -34,11 +34,19 @@ async function handleCoreInteraction(interaction) {
       await interaction.reply({ content: 'You need Manage Server permission to set up tickets.', flags: MessageFlags.Ephemeral });
       return true;
     }
-    const panelChannel = interaction.options.getChannel('panel_channel', true);
-    const staffRole = interaction.options.getRole('staff_role', true);
-    const transcriptChannel = interaction.options.getChannel('transcript_channel', true);
-    const category = interaction.options.getChannel('category');
     const cfg = ticketDashboardConfig(interaction.guildId);
+    const panelChannel = interaction.options.getChannel('panel_channel') ||
+      (cfg.panelChannelId ? await interaction.guild.channels.fetch(cfg.panelChannelId).catch(() => null) : null);
+    const staffRole = interaction.options.getRole('staff_role') ||
+      (cfg.staffRoleId ? await interaction.guild.roles.fetch(cfg.staffRoleId).catch(() => null) : null);
+    const transcriptChannel = interaction.options.getChannel('transcript_channel') ||
+      (cfg.transcriptChannelId ? await interaction.guild.channels.fetch(cfg.transcriptChannelId).catch(() => null) : null);
+    const category = interaction.options.getChannel('category') ||
+      (cfg.categoryId ? await interaction.guild.channels.fetch(cfg.categoryId).catch(() => null) : null);
+    if (!panelChannel?.isTextBased() || !transcriptChannel?.isTextBased() || !staffRole || (category && category.type !== ChannelType.GuildCategory)) {
+      await interaction.reply({ content: 'Choose panel channel, staff role, transcript channel and an optional category in the command or dashboard.', flags: MessageFlags.Ephemeral });
+      return true;
+    }
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
       .setTitle(String(cfg.title || 'Support Center').slice(0, 256))
