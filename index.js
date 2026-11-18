@@ -1487,6 +1487,29 @@ async function enqueueTrackFromMessage(message, query) {
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || !client.user) return;
   const guildSettings = getDashboardSettings(message.guildId);
+  const requestChannelId = String(guildSettings.music && guildSettings.music.requestChannelId || '');
+  if (guildSettings.music.enabled && requestChannelId && message.channelId === requestChannelId) {
+    const query = String(message.content || '').trim();
+    if (!query || query.startsWith('/')) return;
+    try {
+      const result = await enqueueTrackFromMessage(message, query);
+      if (result.error) {
+        await message.reply({ content: result.error, allowedMentions: { repliedUser: false } }).catch(() => {});
+        return;
+      }
+      await message.reply({
+        content: '🎵 Added **' + result.track.title.slice(0, 160) + '** to the queue. Position: ' + result.position + '.',
+        allowedMentions: { repliedUser: false },
+      }).catch(() => {});
+    } catch (musicError) {
+      console.error('Music request channel failed:', musicError.stack || musicError);
+      await message.reply({
+        content: 'I couldn’t find or queue that song. Try another title or send a direct music link.',
+        allowedMentions: { repliedUser: false },
+      }).catch(() => {});
+    }
+    return;
+  }
   const isMentioned = message.mentions.users.has(client.user.id);
   const namePrefixPattern = /^\s*(?:\(\s*(?:محمد|ربات)\s*\)|(?:محمد|ربات))(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/u;
   const hasNamePrefix = namePrefixPattern.test(message.content);
