@@ -40,6 +40,9 @@ plugins:
       - WEBEMBEDDED
       - TVHTML5_SIMPLY
       - TV
+    clientOptions:
+      MWEB:
+        playback: false
 
 logging:
   level:
