@@ -45,3 +45,6 @@ logging:
   level:
     root: WARN
     dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO
+    dev.lavalink.youtube.track.YoutubeAudioTrack: DEBUG
+    dev.lavalink.youtube.YoutubeAudioSourceManager: DEBUG
+    com.sedmelluq.discord.lavaplayer.tools.ExceptionTools: DEBUG
