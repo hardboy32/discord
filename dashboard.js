@@ -134,18 +134,18 @@ function html() {
 html,body{min-height:100%;width:100%}
 body{margin:0;overflow-x:hidden;background:radial-gradient(ellipse at 15% 0,#1b2850 0,transparent 42%),var(--bg);color:var(--text);font:15px Inter,system-ui,Segoe UI,sans-serif}
 button,input,select,textarea{font:inherit}
-button{cursor:pointer;border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px;font-weight:700}
+button{cursor:pointer;border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px;font-weight:700;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
 button.secondary{background:#273653}
 button.danger{background:#a83e57}
 .hidden{display:none!important}
 .shell{display:grid;grid-template-columns:245px minmax(0,1fr);min-height:100vh;align-items:stretch}
-.side{min-width:0;background:#0c1426;border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
+.side{display:flex;flex-direction:column;min-width:0;background:#0c1426;border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto}
 .brand{font-size:19px;font-weight:850;margin:4px 10px 28px}
 .brand span{color:var(--accent)}
 .nav{display:grid;gap:7px}
 .nav button{text-align:left;background:transparent;color:#aebbd2;font-weight:600}
 .nav button.active,.nav button:hover{background:#202c48;color:white}
-.sidefoot{position:absolute;bottom:22px;left:24px;color:var(--muted);font-size:12px}
+.sidefoot{position:static;margin-top:auto;padding:24px 8px 0;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 main{min-width:0;align-self:stretch;padding:30px;max-width:1300px;width:100%;margin:0 auto}
 .top{min-height:72px;display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 25px}
 .top>div{min-width:0}
@@ -154,7 +154,7 @@ h1{font-size:29px;margin:5px 0}
 h2{font-size:19px;margin:0 0 16px}
 .muted{color:var(--muted)}
 .page{width:100%;min-width:0}
-.panel{min-width:0;width:100%;background:linear-gradient(145deg,#17233b,#121b2e);border:1px solid var(--line);border-radius:17px;padding:22px;margin:0 0 18px;box-shadow:0 14px 35px #0002}
+.panel{min-width:0;width:100%;background:linear-gradient(145deg,#17233b,#121b2e);border:1px solid var(--line);border-radius:17px;padding:22px;margin:0 0 18px;box-shadow:0 14px 35px #0002;overflow-wrap:anywhere}
 .page>.panel:last-child{margin-bottom:0}
 .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch}
 .stat{min-width:0;padding:18px;border-radius:14px;background:#101a2e;border:1px solid #263550}
@@ -162,7 +162,7 @@ h2{font-size:19px;margin:0 0 16px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
 .grid>*{min-width:0}
 #communityConfigGrid>.panel{height:100%;margin:0}
-.field{display:block;min-width:0;margin:14px 0;color:#c9d5ea;font-size:13px;font-weight:650}
+.field{display:block;min-width:0;margin:14px 0;color:#c9d5ea;font-size:13px;font-weight:650;overflow-wrap:anywhere}
 .field input:not([type=checkbox]),.field select,.field textarea{display:block;width:100%;max-width:100%;min-width:0;margin-top:7px;background:#0b1426;color:white;border:1px solid #394b6b;border-radius:10px;padding:12px;outline:none}
 .field textarea{min-height:100px;resize:vertical}
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}
@@ -180,10 +180,10 @@ h2{font-size:19px;margin:0 0 16px}
 #status{color:var(--green);font-size:13px}
 .preview{width:100%;min-width:0;background:#0b1426;border:1px dashed #425578;border-radius:13px;padding:16px;min-height:90px;overflow-wrap:anywhere}
 .preview img{max-width:100%;max-height:230px;object-fit:contain;border-radius:9px;display:block;margin-top:10px}
-.command{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:15px 0;border-bottom:1px solid #293752}
+.command{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:16px;padding:15px 0;border-bottom:1px solid #293752;min-width:0;overflow-wrap:anywhere}.command>*{min-width:0;max-width:100%}
 .command:last-child{border:0}
 .command code{color:#aebaff;font-weight:800}
-.tag{display:inline-flex;align-items:center;justify-content:center;font-size:11px;padding:4px 8px;border-radius:20px;background:#273653;color:#cbd8f2;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;justify-content:center;font-size:11px;padding:4px 8px;border-radius:20px;background:#273653;color:#cbd8f2;white-space:normal;overflow-wrap:anywhere;max-width:100%;text-align:center}
 .command p{margin:5px 0 0;color:var(--muted);font-size:13px}
 .formrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .login{max-width:500px;margin:12vh auto;padding:30px}
@@ -195,7 +195,7 @@ h2{font-size:19px;margin:0 0 16px}
   .shell{grid-template-columns:minmax(0,1fr)}
   .side{position:relative;top:auto;align-self:auto;height:auto;min-height:0;overflow:visible;padding:14px}
   .brand{margin:4px 8px 12px}
-  .nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .nav{display:flex;gap:6px;overflow-x:auto;padding:0 0 6px;scrollbar-width:thin;overscroll-behavior-x:contain}
   .nav button{flex:0 0 auto;white-space:nowrap;padding:9px}
   .sidefoot{display:none}
   main{width:100%;max-width:none;margin:0;padding:18px}
@@ -204,7 +204,7 @@ h2{font-size:19px;margin:0 0 16px}
 }
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
-<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="modules">⚙ Modules</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="backup">⬇ Data backup</button>
+<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="settings">☷ Settings</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="modules">⚙ Modules</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="backup">⬇ Data backup</button>
 </nav><div class="sidefoot">Single server • Secure admin access</div></aside><main>
 <header class="top"><div><div class="eyebrow">Control center</div><h1 id="pageTitle">Overview</h1><div class="muted" id="userName">Loading server…</div></div><div><span class="tag" id="serverName">Connected</span></div></header>
 <section id="page-overview" class="page"><div class="stats"><div class="stat"><span class="muted">Members</span><b id="memberCount">—</b></div><div class="stat"><span class="muted">Text channels</span><b id="channelCount">—</b></div><div class="stat"><span class="muted">Bot status</span><b style="color:var(--green)">Online</b></div></div><div class="panel" style="margin-top:18px"><h2>Welcome to your control center</h2><p class="muted">Manage welcome messages, moderation tools and bot modules from one place. Changes are saved to your Railway volume.</p><button onclick="showPage('welcome')">Configure welcome system</button></div><div class="panel"><h2>Quick access</h2><div class="grid"><button class="secondary" onclick="showPage('commands')">Browse bot commands</button><button class="secondary" onclick="showPage('moderation')">Moderation settings</button></div></div></section>
@@ -223,27 +223,6 @@ h2{font-size:19px;margin:0 0 16px}
 <label class="check"><input id="welcomeEnabled" type="checkbox"> Enable welcome messages</label>
 </div><div><div class="eyebrow" style="margin-bottom:9px">Live preview</div><div class="preview"><b id="previewServer">Your server</b><div id="previewMessage" style="margin-top:12px">Welcome @NewMember to Your server!</div><div id="previewImagePlaceholder" class="hint hidden" style="margin-top:12px">Choose an image to see the image welcome preview.</div><img id="previewImage" class="hidden" alt="Welcome image preview"></div><div class="hint" style="margin-top:12px">The preview uses sample member data. Discord formatting may look slightly different.</div></div></div><div class="actions"><button id="saveWelcome">Save welcome settings</button><span id="welcomeStatus"></span></div></div><div class="panel"><h2>Goodbye message</h2><p class="muted">Send a custom message when a member leaves.</p><label class="check"><input id="goodbyeEnabled" type="checkbox"> Enable goodbye messages</label><label class="field">Send to channel<select id="goodbyeChannel"></select></label><label class="field">Message<textarea id="goodbyeMessage" maxlength="1000" placeholder="Goodbye {user}!"></textarea></label><p class="hint">Placeholders: {user}, {username}, {server}, {count}. Mentions are disabled in goodbye messages.</p><button id="saveGoodbye">Save goodbye settings</button> <span id="goodbyeStatus"></span></div></section>
 <section id="page-music" class="page hidden">
-<div class="panel">
-<h2>Automatic music request channel</h2>
-<p class="muted">Choose a text channel. Members can simply send a song title or supported music link there; the bot will add it to the music queue. They must be connected to a voice channel first.</p>
-<label class="field">Request channel<select id="musicRequestChannel"><option value="">Disabled — choose a channel</option></select></label>
-<div class="actions"><button id="saveMusicRequestChannel">Save request channel</button><span id="musicRequestChannelStatus" role="status"></span></div>
-<p class="hint">Only messages in this selected channel are treated as music requests. Other channels keep their normal behavior.</p>
-</div>
-<div class="panel">
-<h2>Default music artwork</h2>
-<p class="muted">Upload a GIF and choose whether it should replace every song cover or appear only when a song has no cover.</p>
-<div class="grid">
-<label class="field">Fallback GIF (GIF, maximum 8 MB)<input id="musicFallbackGif" type="file" accept="image/gif,.gif"></label>
-<div class="field"><span>Current artwork preview</span><div class="preview"><img id="musicFallbackPreview" alt="Current fallback music artwork" style="max-height:190px"></div></div>
-</div>
-<div class="actions"><button id="uploadMusicFallbackGif">⬆ Upload / replace GIF</button><span id="musicFallbackGifStatus" role="status" aria-live="polite"></span></div>
-<div class="grid" style="margin-top:12px">
-<label class="field">Artwork behavior<select id="musicArtworkMode"><option value="missing">Only when the song has no cover</option><option value="force">Force uploaded GIF on every song</option></select></label>
-<div class="field"><span>Apply behavior</span><button id="saveMusicArtworkMode" type="button">Save artwork mode</button><span id="musicArtworkModeStatus" role="status" aria-live="polite"></span></div>
-</div>
-<p class="hint">“Force” replaces the track's own cover in the Discord music panel. “Only when missing” keeps each song's original cover whenever available. The setting is saved on Railway.</p>
-</div>
 <div class="panel">
 <h2>Play music from the dashboard</h2>
 <p class="muted">Paste a link from a site supported by yt-dlp, or a direct audio-file URL. The bot will extract the audio and play it in your selected voice channel.</p>
@@ -288,6 +267,33 @@ h2{font-size:19px;margin:0 0 16px}
 <p class="hint">Maximum file size: 20 MB per track. Audio files are stored in /app/data/music-library.</p>
 </div>
 </section>
+<section id="page-settings" class="page hidden">
+<div class="panel">
+<h2>Settings</h2>
+<p class="muted">Manage the server-wide music request channel and the artwork shown in the Discord music player. These settings are saved to your Railway storage.</p>
+</div>
+<div class="panel">
+<h2>Automatic music request channel</h2>
+<p class="muted">Choose a text channel. Members can simply send a song title or supported music link there; the bot will add it to the music queue. They must be connected to a voice channel first.</p>
+<label class="field">Request channel<select id="musicRequestChannel"><option value="">Disabled — choose a channel</option></select></label>
+<div class="actions"><button id="saveMusicRequestChannel">Save request channel</button><span id="musicRequestChannelStatus" role="status"></span></div>
+<p class="hint">Only messages in this selected channel are treated as music requests. Other channels keep their normal behavior.</p>
+</div>
+<div class="panel">
+<h2>Default music artwork</h2>
+<p class="muted">Upload a GIF and choose whether it should replace every song cover or appear only when a song has no cover.</p>
+<div class="grid">
+<label class="field">Fallback GIF (GIF, maximum 8 MB)<input id="musicFallbackGif" type="file" accept="image/gif,.gif"></label>
+<div class="field"><span>Current artwork preview</span><div class="preview"><img id="musicFallbackPreview" alt="Current fallback music artwork" style="max-height:190px"></div></div>
+</div>
+<div class="actions"><button id="uploadMusicFallbackGif">⬆ Upload / replace GIF</button><span id="musicFallbackGifStatus" role="status" aria-live="polite"></span></div>
+<div class="grid" style="margin-top:12px">
+<label class="field">Artwork behavior<select id="musicArtworkMode"><option value="missing">Only when the song has no cover</option><option value="force">Force uploaded GIF on every song</option></select></label>
+<div class="field"><span>Apply behavior</span><button id="saveMusicArtworkMode" type="button">Save artwork mode</button><span id="musicArtworkModeStatus" role="status" aria-live="polite"></span></div>
+</div>
+<p class="hint">“Force” replaces the track's own cover in the Discord music panel. “Only when missing” keeps each song's original cover whenever available. The setting is saved on Railway.</p>
+</div>
+</section>
 <section id="page-commands" class="page hidden"><div class="panel"><h2>Bot command library</h2><p class="muted">All registered slash commands, grouped by purpose. Admin actions can be launched from the action panel.</p><div id="commandList"></div></div><div class="panel"><h2>Run a moderation command</h2><p class="muted">The bot checks your live server permissions again before executing an action.</p><div class="formrow"><label class="field">Command<select id="adminAction"><option value="kick">Kick member</option><option value="ban">Ban member</option><option value="timeout">Timeout member</option><option value="untimeout">Remove timeout</option><option value="clear">Delete messages</option><option value="slowmode">Set slowmode</option><option value="lock">Lock channel</option><option value="unlock">Unlock channel</option></select></label><label class="field">Member ID<input id="targetUser" placeholder="Discord user ID"></label><div class="field"><span>&nbsp;</span><button id="loadModerationMembers" class="secondary" type="button">Load server members</button></div><label class="field">Choose member from list<select id="moderationMemberSelect"><option value="">Load members first</option></select></label></div><div class="formrow"><label class="field">Amount / minutes<input id="actionAmount" type="number" min="1" placeholder="For timeout or clear"></label><label class="field">Channel<select id="actionChannel"></select></label></div><label class="field">Reason (optional)<input id="actionReason" placeholder="Reason for this action"></label><div class="actions"><button class="danger" id="runAction">Execute command</button><span id="actionStatus"></span></div><p class="hint">For safety, this panel currently supports direct moderation actions. Music playback controls remain available through Discord slash commands.</p></div></section>
 <section id="page-moderation" class="page hidden"><div class="panel"><h2>Moderation & AutoMod</h2><label class="check"><input id="moderationEnabled" type="checkbox"> Enable moderation commands</label><label class="check"><input id="antiLink" type="checkbox"> Block Discord invite links</label><label class="check"><input id="antiSpam" type="checkbox"> Detect message spam (5 messages in 5 seconds)</label><label class="check"><input id="antiMentionSpam" type="checkbox"> Block mass mentions (more than 5 users)</label><label class="field">Blocked words (one per line)<textarea id="blockedWords" placeholder="word1&#10;word2"></textarea></label><label class="field">Moderation / event log channel<select id="logChannel"></select></label><label class="check"><input id="loggingEnabled" type="checkbox"> Enable server event logs</label><button id="saveModeration">Save moderation settings</button> <span id="moderationStatus"></span><p class="hint">AutoMod ignores members with Manage Messages or Administrator permission. Deleted-message logs do not include message contents.</p></div></section>
 <section id="page-modules" class="page hidden"><div class="panel"><h2>Bot modules</h2><label class="check"><input id="musicEnabled" type="checkbox"> Enable music commands</label><label class="check"><input id="aiEnabled" type="checkbox"> Enable AI replies</label><p class="hint">AI replies require GROQ_API_KEY in Railway Variables.</p><h2 style="margin-top:24px">Automatic role</h2><label class="check"><input id="autoroleEnabled" type="checkbox"> Give a role to every new member</label><label class="field">Role to assign<select id="autoroleRole"></select></label><p class="hint">The bot needs Manage Roles permission, and its highest role must be above the selected role.</p><button id="saveModules">Save module settings</button> <span id="moduleStatus"></span></div></section>
@@ -318,7 +324,7 @@ h2{font-size:19px;margin:0 0 16px}
 <section id="page-xp" class="page hidden"><div class="panel"><h2>XP management</h2><p class="muted">Search for a server member, check their current XP, then add or remove points manually.</p><div class="actions"><button id="xpLoadAllButton" class="secondary" type="button">Load all server members</button><span id="xpLoadAllStatus" role="status"></span></div><div class="formrow"><label class="field">Search member by username or display name<input id="xpMemberQuery" maxlength="80" placeholder="Type a member name"></label><div class="field" style="justify-content:end"><span>&nbsp;</span><button id="xpSearchButton" class="secondary">Search members</button></div></div><label class="field">Select member<select id="xpMemberSelect"><option value="">Load the member list or search first</option></select></label><div class="formrow"><label class="field">XP amount<input id="xpAmount" type="number" min="1" max="1000000" value="100"></label><label class="field">Reason (optional)<input id="xpReason" maxlength="180" placeholder="Manual adjustment"></label></div><div class="actions"><button id="xpAddButton">Add XP</button><button id="xpRemoveButton" class="danger">Remove XP</button><span id="xpStatus" role="status"></span></div><p class="hint" id="xpCurrentValue">Choose a member to view their current XP.</p></div></section><section id="page-backup" class="page hidden"><div class="panel"><h2>Complete bot data backup</h2><p class="muted">Download a single JSON archive containing the bot's persistent text data and configuration files from the Railway Volume.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>/app/data</b></div><div class="stat"><span class="muted">Security</span><b>Admin only</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files found in the data folder. Binary files such as welcome images and secrets/tokens are not included. Keep the downloaded backup somewhere safe.</p><div class="actions"><button id="downloadDataBackup">Download complete data backup</button><span id="backupStatus"></span></div><hr style="border-color:var(--line);margin:22px 0"><h2>Restore from backup</h2><p class="muted">Upload a backup JSON previously downloaded from this dashboard. Matching files will be replaced by the backup contents.</p><label class="field">Backup file (.json)<input id="restoreBackupFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="restoreDataBackup" class="danger">Restore selected backup</button><span id="restoreStatus"></span></div><p class="hint">Restore only accepts this bot’s backup format and the same Discord server. It replaces matching text files; it does not restore images, secrets, Discord messages, roles, or channels. Do not close this page while the restore is running.</p></div></section>
 </main></div><script>
 const $=id=>document.getElementById(id);let data=null;let imageData='';
-function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',music:'Music player',commands:'Commands',moderation:'Moderation',modules:'Modules',community:'Community features',backup:'Data backup',xp:'XP management'})[name]}
+function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',music:'Music player',commands:'Commands',moderation:'Moderation',modules:'Modules',community:'Community features',backup:'Data backup',xp:'XP management',settings:'Settings'})[name]}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 function options(select,channels){channels=channels.filter(c=>c.type===0||c.type===5);select.innerHTML='<option value="">Select channel</option>'+channels.map(c=>'<option value="'+c.id+'"></option>').join('');Array.from(select.options).forEach((o,i)=>{if(i)o.textContent='# '+channels[i-1].name})}
 function updateWelcomeMode(){const imageMode=$('welcomeType').value==='image';$('welcomeTextFields').classList.toggle('hidden',imageMode);$('welcomeImageFields').classList.toggle('hidden',!imageMode);$('previewMessage').classList.toggle('hidden',imageMode);const hasImage=!!$('previewImage').getAttribute('src');$('previewImage').classList.toggle('hidden',!imageMode||!hasImage);$('previewImagePlaceholder').classList.toggle('hidden',!imageMode||hasImage)}
