@@ -41,6 +41,8 @@ plugins:
       - TVHTML5_SIMPLY
       - TV
     clientOptions:
+      WEB:
+        playback: false
       MWEB:
         playback: false
 
