@@ -990,9 +990,9 @@ async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId)
     const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
     if (channel && channel.isTextBased()) {
       await channel.send(
-        '⚠️ پخش آهنگ "' +
-        String(failedTrack && failedTrack.title || 'این آهنگ').slice(0, 140) +
-        '" به‌دلیل خطای منبع متوقف شد. آهنگ جایگزین به‌صورت خودکار پخش نمی‌شود.'
+        '⚠️ Playback of "' +
+        String(failedTrack && failedTrack.title || 'this track').slice(0, 140) +
+        '" stopped because the audio source failed. No replacement track will be played automatically.'
       ).catch(() => {});
     }
   }
@@ -1476,6 +1476,12 @@ async function handleMusicSearchSelection(interaction) {
     content: '🎵 Selected **' + track.title.slice(0, 160) + '** and added it to the queue. Position: ' + (position + 1) + '.',
     components: [],
   }).catch(() => {});
+
+  // Keep the request channel tidy: remove the temporary selection confirmation.
+  const confirmationCleanup = setTimeout(() => {
+    void interaction.message.delete().catch(() => {});
+  }, 5000);
+  if (typeof confirmationCleanup.unref === 'function') confirmationCleanup.unref();
 }
 
 async function findTrack(query, requestedBy) {
