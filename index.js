@@ -1581,7 +1581,7 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
   const isMentioned = message.mentions.users.has(client.user.id);
-  const namePrefixPattern = /^\s*(?:\(\s*(?:محمد|ربات)\s*\)|(?:محمد|ربات))(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/u;
+  const namePrefixPattern = /^\s*(?:\(\s*(?:محمد|ربات|bot|assistant)\s*\)|(?:محمد|ربات|bot|assistant))(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/iu;
   const hasNamePrefix = namePrefixPattern.test(message.content);
   let isReplyToBot = false;
   if (message.reference && message.reference.messageId) {
