@@ -1415,8 +1415,6 @@ async function sendMusicSearchChoices(message, query) {
     for (let index = offset; index < Math.min(offset + 5, visibleCandidates.length); index++) {
       const track = visibleCandidates[index];
       const title = String(track.title || 'Unknown track').replace(/\s+/g, ' ').slice(0, 75);
-      const source = String(track.source || 'music').slice(0, 16);
-      const duration = String(track.duration || 'Unknown').slice(0, 12);
       row.addComponents(new ButtonBuilder()
         .setCustomId('music-search:' + selectionId + ':' + index)
         .setLabel((index + 1) + '. ' + title.slice(0, 75 - String(index + 1).length - 2))
@@ -1425,8 +1423,7 @@ async function sendMusicSearchChoices(message, query) {
     rows.push(row);
   }
   const reply = await message.reply({
-    content: '🎵 I found these matches for **' + query.slice(0, 160) + '**. Press one of the buttons below to choose your song (60 seconds):\n' +
-      visibleCandidates.map((track, index) => (index + 1) + '. ' + String(track.source || 'music') + ' • ' + String(track.duration || 'Unknown duration')).join('\n'),
+    content: '\u200b',
     components: rows,
     allowedMentions: { repliedUser: false },
   });
