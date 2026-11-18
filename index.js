@@ -977,49 +977,23 @@ async function findLavalinkAlternative(query, requestedBy, failedSource) {
 }
 
 async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId) {
-  let retry = null;
-  let crossSourceAttempted = Boolean(failedTrack && failedTrack.fallbackAttempted);
+  // A failed stream must never silently replace the member's requested song
+  // with another search result. Continue only with tracks explicitly queued
+  // by members; otherwise stop playback and report the failure.
+  console.warn(
+    'Lavalink track failed; automatic alternative search is disabled:',
+    String(failedTrack && failedTrack.title || 'unknown track').slice(0, 140),
+    '| reason:', String(reason || 'unknown').slice(0, 180)
+  );
 
-  // If YouTube itself failed, try SoundCloud immediately instead of spending
-  // time cycling through more YouTube search results that may hit the same block.
-  if (failedTrack && failedTrack.source === 'youtube' &&
-      !failedTrack.fallbackAttempted && failedTrack.searchQuery) {
-    crossSourceAttempted = true;
-    try {
-      retry = await findLavalinkAlternative(
-        failedTrack.searchQuery,
-        failedTrack.requestedBy,
-        failedTrack.source
-      );
-    } catch (error) {
-      console.warn('Alternative music source lookup failed:', error.message || error);
-    }
-  }
-
-  if (!retry && failedTrack && Array.isArray(failedTrack.alternatives) && failedTrack.alternatives.length) {
-    const [nextCandidate, ...remaining] = failedTrack.alternatives;
-    nextCandidate.alternatives = remaining;
-    nextCandidate.fallbackAttempted = crossSourceAttempted;
-    retry = nextCandidate;
-  } else if (!retry && failedTrack && !crossSourceAttempted && failedTrack.searchQuery) {
-    try {
-      retry = await findLavalinkAlternative(
-        failedTrack.searchQuery,
-        failedTrack.requestedBy,
-        failedTrack.source
-      );
-    } catch (error) {
-      console.warn('Alternative music source lookup failed:', error.message || error);
-    }
-  }
-
-  if (retry) {
-    queue.tracks.unshift(retry);
-    console.warn('Lavalink source failed; trying another result:', retry.title, '| previous reason:', String(reason || 'unknown').slice(0, 120));
-  } else if (queue.textChannelId) {
+  if (queue.textChannelId) {
     const channel = await client.channels.fetch(queue.textChannelId).catch(() => null);
     if (channel && channel.isTextBased()) {
-      await channel.send('Could not play "' + String(failedTrack && failedTrack.title || 'this track').slice(0, 140) + '". No working alternative was found.').catch(() => {});
+      await channel.send(
+        '⚠️ پخش آهنگ "' +
+        String(failedTrack && failedTrack.title || 'این آهنگ').slice(0, 140) +
+        '" به‌دلیل خطای منبع متوقف شد. آهنگ جایگزین به‌صورت خودکار پخش نمی‌شود.'
+      ).catch(() => {});
     }
   }
 
