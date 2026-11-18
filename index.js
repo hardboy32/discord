@@ -89,6 +89,7 @@ attachCommunityModules(client);
 const queues = new Map();
 const MUSIC_FALLBACK_GIF_URL = 'https://media1.tenor.com/m/VvoXEWzX44EAAAAd/adventure-time.gif';
 const MUSIC_FALLBACK_GIF_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-fallback.gif');
+let defaultFallbackGifBufferPromise = null;
 const MUSIC_PANEL_STATE_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-panels.json');
 
 function loadMusicPanelState() {
@@ -368,15 +369,24 @@ async function createFallbackGifAttachment() {
     }
     return new AttachmentBuilder(buffer, { name: 'music-fallback.gif' });
   }
-  const response = await fetch(MUSIC_FALLBACK_GIF_URL, {
-    signal: AbortSignal.timeout(15000),
-    redirect: 'follow',
-  });
-  if (!response.ok) throw new Error('Default fallback GIF download failed (HTTP ' + response.status + ').');
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
-    throw new Error('Default fallback GIF is empty or larger than 8 MB.');
+  if (!defaultFallbackGifBufferPromise) {
+    defaultFallbackGifBufferPromise = (async () => {
+      const response = await fetch(MUSIC_FALLBACK_GIF_URL, {
+        signal: AbortSignal.timeout(15000),
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error('Default fallback GIF download failed (HTTP ' + response.status + ').');
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
+        throw new Error('Default fallback GIF is empty or larger than 8 MB.');
+      }
+      return buffer;
+    })().catch(error => {
+      defaultFallbackGifBufferPromise = null;
+      throw error;
+    });
   }
+  const buffer = await defaultFallbackGifBufferPromise;
   return new AttachmentBuilder(buffer, { name: 'music-fallback.gif' });
 }
 
