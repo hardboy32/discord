@@ -480,6 +480,19 @@ async function waitForLavalinkNode(timeoutMs = 120000) {
   throw new Error('The music engine is still starting. Please try again in a moment.');
 }
 
+function durationText(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  const twoDigits = value => String(value).padStart(2, '0');
+
+  if (hours > 0) {
+    return hours + ':' + twoDigits(minutes) + ':' + twoDigits(remainingSeconds);
+  }
+  return minutes + ':' + twoDigits(remainingSeconds);
+}
+
 function mapLavalinkTrack(item, requestedBy, searchQuery, sourceHint) {
   const info = item && item.info ? item.info : {};
   const durationSeconds = Math.max(0, Number(info.length || 0) / 1000);
