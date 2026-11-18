@@ -225,6 +225,65 @@ async function getYoutubeInfo(queryOrUrl) {
   });
 }
 
+async function getYtDlpMediaUrl(url) {
+  await ensureYtDlpReady();
+  const useBgutil = await ensureBgutilReady();
+  const args = ['--no-warnings', '--no-progress', '--no-playlist', '--format', 'bestaudio/best', '--get-url'];
+  const cookiePath = await createYtDlpCookieCopy();
+  addYoutubeExtractorOptions(args, cookiePath, useBgutil);
+  args.push(url);
+  return new Promise((resolve, reject) => {
+    const child = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 45000);
+    child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-3000); });
+    child.on('error', error => {
+      clearTimeout(timeout);
+      void removeYtDlpCookieCopy(cookiePath);
+      reject(new Error('Could not start yt-dlp: ' + error.message));
+    });
+    child.on('close', code => {
+      clearTimeout(timeout);
+      void removeYtDlpCookieCopy(cookiePath);
+      const mediaUrl = stdout.trim().split(/\\r?\\n/).filter(Boolean).pop();
+      if (code !== 0 || !mediaUrl || !/^https?:\\/\\//i.test(mediaUrl)) {
+        const safeError = stderr.replace(/https?:\\/\\/\\S+/g, '[URL omitted]').trim();
+        reject(new Error('Could not extract an audio stream from this site: ' + (safeError || 'unsupported or protected media')));
+        return;
+      }
+      resolve(mediaUrl);
+    });
+  });
+}
+
+async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 0) {
+  if (!ffmpegPath) throw new Error('FFmpeg is not available on this host.');
+  const args = ['-hide_banner', '-loglevel', 'error'];
+  const start = Math.max(0, Number(startSeconds) || 0);
+  if (start > 0) args.push('-ss', String(start));
+  let input;
+  if (track.source === 'local' && track.filePath) {
+    if (!fs.existsSync(track.filePath)) throw new Error('Saved audio file is missing.');
+    input = track.filePath;
+  } else {
+    input = await getYtDlpMediaUrl(track.url);
+  }
+  args.push('-i', input);
+  const end = Math.max(0, Number(endSeconds) || 0);
+  if (end > start) args.push('-t', String(end - start));
+  args.push('-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1');
+  const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-2000); });
+  child.on('error', error => console.error('Audio FFmpeg process error:', error.message || error));
+  child.on('close', code => {
+    if (code !== 0) console.error('Audio FFmpeg process ended with code ' + code + ':', stderr || 'no diagnostic output');
+  });
+  return child;
+}
+
 async function createYoutubeStream(url) {
   await ensureYtDlpReady();
   const useBgutil = await ensureBgutilReady();
@@ -330,6 +389,7 @@ function getQueue(guildId) {
     loopMode: 'off',
     skipCurrent: false,
     stopping: false,
+    seekInProgress: false,
     nowPlayingMessage: null,
     player: createAudioPlayer({
       behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
@@ -349,6 +409,12 @@ function getQueue(guildId) {
   queue.player.on(AudioPlayerStatus.Idle, () => {
     const finishedTrack = queue.current;
     queue.current = null;
+
+    if (queue.seekInProgress) {
+      queue.seekInProgress = false;
+      setImmediate(() => void playNext(guildId));
+      return;
+    }
 
     if (finishedTrack && !queue.skipCurrent && !queue.stopping) {
       if (queue.loopMode === 'track') queue.tracks.unshift(finishedTrack);
@@ -607,7 +673,8 @@ async function findTrack(query, requestedBy) {
           thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
           requestedBy,
           searchQuery: video.title || normalizedUrl,
-          source: 'youtube',
+          source: 'ytdlp',
+          durationSeconds: Number(video.duration || 0),
         };
       }
 
@@ -671,6 +738,7 @@ async function findTrack(query, requestedBy) {
         title: sound.name || sound.title || 'SoundCloud track',
         url: sound.permalink || soundCloudUrl,
         duration: durationText(sound.durationInSec || 0),
+        durationSeconds: Number(sound.durationInSec || 0),
         thumbnail: getTrackThumbnail(sound.artwork_url, sound.thumbnail),
         requestedBy,
         searchQuery: sound.name || sound.title || soundCloudUrl,
@@ -680,8 +748,24 @@ async function findTrack(query, requestedBy) {
       };
     }
 
-    console.warn('Unsupported /play URL host:', hostname);
-    throw new Error('Unsupported link. Provide a YouTube video or SoundCloud track URL.');
+    console.warn('Trying generic yt-dlp extractor for:', hostname);
+    let mediaInfo;
+    try {
+      mediaInfo = await getYoutubeInfo(input);
+    } catch (error) {
+      throw new Error('This site could not be resolved by yt-dlp. The site may require login, block automated playback, or not expose a supported audio stream. Details: ' + String(error.message || error).slice(0, 450));
+    }
+    if (!mediaInfo || !mediaInfo.webpage_url) throw new Error('No playable audio stream was found on this page.');
+    return {
+      title: mediaInfo.title || hostname + ' audio',
+      url: mediaInfo.webpage_url || input,
+      duration: durationText(mediaInfo.duration || 0),
+      durationSeconds: Number(mediaInfo.duration || 0),
+      thumbnail: getTrackThumbnail(mediaInfo.thumbnail, mediaInfo.thumbnails),
+      requestedBy,
+      searchQuery: mediaInfo.title || input,
+      source: 'ytdlp',
+    };
   }
 
   const video = await getYoutubeInfo('ytsearch1:' + input);
@@ -695,7 +779,8 @@ async function findTrack(query, requestedBy) {
     thumbnail: getTrackThumbnail(video.thumbnail, video.thumbnails),
     requestedBy,
     searchQuery: input,
-    source: 'youtube',
+    source: 'ytdlp',
+    durationSeconds: Number(video.duration || 0),
   };
 }
 async function connectVoice(guild, channel, queue) {
@@ -802,6 +887,60 @@ async function playTrackFromDashboard(guildId, voiceChannelId, url, requestedBy 
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(track);
   if (!queue.current) void playNext(guild.id);
+
+async function getDashboardMusicStatus(guildId) {
+  const queue = queues.get(guildId);
+  if (!queue) return { playing: false, paused: false, position: 0, duration: 0, title: '', channelId: '' };
+  const track = queue.current;
+  const playing = !!track && (queue.player.state.status === AudioPlayerStatus.Playing || queue.player.state.status === AudioPlayerStatus.Paused);
+  const elapsed = track && track.startedAt ? Math.max(0, (Date.now() - track.startedAt) / 1000) : 0;
+  const position = track ? Math.max(0, (Number(track.startOffset) || 0) + elapsed) : 0;
+  return {
+    playing,
+    paused: queue.player.state.status === AudioPlayerStatus.Paused,
+    title: track ? track.title : '',
+    position: Math.floor(position),
+    duration: track ? Number(track.durationSeconds || 0) : 0,
+    segmentEnd: track ? Number(track.segmentEnd || 0) : 0,
+    channelId: queue.voiceChannelId || '',
+    queueLength: queue.tracks.length,
+  };
+}
+
+async function controlDashboardMusic(guildId, action, values = {}) {
+  const queue = queues.get(guildId);
+  if (!queue || !queue.current) throw new Error('No track is currently playing.');
+  const track = queue.current;
+  if (action === 'pause') {
+    if (queue.player.state.status === AudioPlayerStatus.Paused) queue.player.unpause();
+    else queue.player.pause(true);
+    return getDashboardMusicStatus(guildId);
+  }
+  if (action === 'stop') {
+    queue.stopping = true;
+    queue.tracks = [];
+    if (track.ffmpegProcess && !track.ffmpegProcess.killed) track.ffmpegProcess.kill('SIGTERM');
+    queue.player.stop(true);
+    return { playing: false, paused: false, position: 0, duration: 0, title: '' };
+  }
+  if (action === 'seek') {
+    const requested = Number(values.position);
+    if (!Number.isFinite(requested) || requested < 0) throw new Error('Enter a valid seek position.');
+    const duration = Number(track.durationSeconds || 0);
+    if (duration > 0 && requested >= duration) throw new Error('Seek position must be before the end of the track.');
+    const endAt = Number(values.endAt) > requested ? Number(values.endAt) : 0;
+    if (endAt > 0 && duration > 0 && endAt > duration) throw new Error('Segment end cannot exceed the track duration.');
+    const wasPaused = queue.player.state.status === AudioPlayerStatus.Paused;
+    const replacement = { ...track, startAt: requested, endAt, startedAt: 0, startOffset: requested };
+    queue.seekInProgress = true;
+    queue.tracks.unshift(replacement);
+    if (track.ffmpegProcess && !track.ffmpegProcess.killed) track.ffmpegProcess.kill('SIGTERM');
+    queue.player.stop(true);
+    if (wasPaused) replacement.resumePaused = true;
+    return { queued: true, position: requested, endAt };
+  }
+  throw new Error('Unknown music player action.');
+}
 
   console.log('Dashboard music request:', track.title, '->', channel.name, '| queue position:', position);
   return { track, position, channelName: channel.name };
@@ -957,43 +1096,17 @@ async function playNext(guildId) {
   try {
     console.log('Starting track:', track.title);
     let resource;
-    let soundCloudProcess = null;
-
-    if (track.source === 'local' && track.filePath) {
-      if (!fs.existsSync(track.filePath)) throw new Error('Saved audio file is missing.');
-      const localAudioProcess = spawn(ffmpegPath, [
-        '-hide_banner', '-loglevel', 'error', '-i', track.filePath,
-        '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
-      let localAudioError = '';
-      localAudioProcess.stderr.on('data', chunk => { localAudioError = (localAudioError + chunk.toString()).slice(-2000); });
-      localAudioProcess.on('error', error => console.error('Uploaded audio FFmpeg process error:', error.message || error));
-      localAudioProcess.on('close', code => {
-        if (code !== 0) console.error('Uploaded audio decode failed:', localAudioError || 'FFmpeg exit code ' + code);
-      });
-      track.ffmpegProcess = localAudioProcess;
-      resource = createAudioResource(localAudioProcess.stdout, {
-        metadata: track,
-        inputType: StreamType.Raw,
-      });
-    } else if (track.source === 'soundcloud' && track.soundCloudInfo) {
-      // Explicitly decode SoundCloud AAC HLS to PCM so FFmpeg diagnostics
-      // and the number of decoded audio bytes are visible in runtime logs.
-      const direct = await createSoundCloudPcmStream(track.soundCloudInfo, track.title);
-      soundCloudProcess = direct.process;
-      resource = createAudioResource(direct.stream, {
-        metadata: track,
-        inputType: StreamType.Raw,
-      });
-      track.ffmpegProcess = soundCloudProcess;
-    } else {
-      const youtubeStream = await createYoutubeStream(track.url);
-      resource = createAudioResource(youtubeStream, {
-        metadata: track,
-        inputType: StreamType.Arbitrary,
-      });
-      track.youtubeStream = youtubeStream;
-    }
+    const startAt = Math.max(0, Number(track.startAt) || 0);
+    const endAt = Math.max(0, Number(track.endAt) || 0);
+    const audioProcess = await createSeekableAudioProcess(track, startAt, endAt);
+    track.ffmpegProcess = audioProcess;
+    track.startedAt = Date.now();
+    track.startOffset = startAt;
+    track.segmentEnd = endAt;
+    resource = createAudioResource(audioProcess.stdout, {
+      metadata: track,
+      inputType: StreamType.Raw,
+    });
 
     resource.playStream.on('error', error => {
       console.error('Audio resource stream error:', error.message || error);
@@ -1001,7 +1114,7 @@ async function playNext(guildId) {
     queue.player.play(resource);
     await updateMusicPanel(queue, track);
     console.log('Audio resource queued:', track.title);
-    if (soundCloudProcess) console.log('SoundCloud PCM stream linked to Discord audio resource:', track.title);
+    console.log('Seekable FFmpeg audio stream linked to Discord audio resource:', track.title);
   } catch (error) {
     console.error('Track failed:', track.title, error.stack || error);
     queue.current = null;
@@ -1392,7 +1505,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log('Runtime process ID:', process.pid);
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
-  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard);
+  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic);
   console.log(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
   console.log('Bot activity is cleared. Use /activity to set it.');
