@@ -487,8 +487,6 @@ function mapLavalinkTrack(item, requestedBy, searchQuery, sourceHint) {
     source,
     encoded: item.encoded,
     identifier: info.identifier || '',
-    alternatives: [],
-    fallbackAttempted: false,
   };
 }
 
@@ -764,10 +762,6 @@ async function handleMusicSearchSelection(interaction) {
   }
   await interaction.deferUpdate();
   pendingMusicSelections.delete(selectionId);
-  // Keep the other search results attached to this choice. If the chosen
-  // YouTube result fails, playback can try the remaining candidates.
-  track.alternatives = pending.candidates.filter((candidate, candidateIndex) => candidateIndex !== index);
-  track.fallbackAttempted = false;
   const member = await interaction.guild.members.fetch(interaction.user.id);
   if (!member.voice.channel) {
     await interaction.message.edit({ content: 'Join a voice channel first, then send the request again.', components: [] }).catch(() => {});
@@ -809,7 +803,6 @@ async function findTrack(query, requestedBy) {
     if (!tracks.length) throw new Error('No playable track was found at that link.');
     const track = tracks[0];
     track.searchQuery = track.title || input;
-    track.fallbackAttempted = false;
     return track;
   }
 
@@ -820,8 +813,6 @@ async function findTrack(query, requestedBy) {
     try {
       const candidates = await resolveLavalinkTracks(prefix + input, requestedBy, input, source);
       if (candidates.length) {
-        candidates[0].alternatives = candidates.slice(1);
-        candidates[0].fallbackAttempted = false;
         logDebug('Lavalink title search resolved through ' + source + ':', candidates[0].title);
         return candidates[0];
       }
@@ -982,7 +973,6 @@ async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, 
     filePath: safeFilePath,
     libraryId: savedTrack.id,
     searchQuery: String(savedTrack.title || ''),
-    fallbackAttempted: true,
   };
   const queue = getQueue(guild.id);
   await connectVoice(guild, channel, queue);
