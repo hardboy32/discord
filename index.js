@@ -908,12 +908,30 @@ async function findLavalinkAlternative(query, requestedBy, failedSource) {
 
 async function queueLavalinkFailureFallback(queue, failedTrack, reason, guildId) {
   let retry = null;
-  if (failedTrack && Array.isArray(failedTrack.alternatives) && failedTrack.alternatives.length) {
+  let crossSourceAttempted = Boolean(failedTrack && failedTrack.fallbackAttempted);
+
+  // If YouTube itself failed, try SoundCloud immediately instead of spending
+  // time cycling through more YouTube search results that may hit the same block.
+  if (failedTrack && failedTrack.source === 'youtube' &&
+      !failedTrack.fallbackAttempted && failedTrack.searchQuery) {
+    crossSourceAttempted = true;
+    try {
+      retry = await findLavalinkAlternative(
+        failedTrack.searchQuery,
+        failedTrack.requestedBy,
+        failedTrack.source
+      );
+    } catch (error) {
+      console.warn('Alternative music source lookup failed:', error.message || error);
+    }
+  }
+
+  if (!retry && failedTrack && Array.isArray(failedTrack.alternatives) && failedTrack.alternatives.length) {
     const [nextCandidate, ...remaining] = failedTrack.alternatives;
     nextCandidate.alternatives = remaining;
-    nextCandidate.fallbackAttempted = Boolean(failedTrack.fallbackAttempted);
+    nextCandidate.fallbackAttempted = crossSourceAttempted;
     retry = nextCandidate;
-  } else if (failedTrack && !failedTrack.fallbackAttempted && failedTrack.searchQuery) {
+  } else if (!retry && failedTrack && !crossSourceAttempted && failedTrack.searchQuery) {
     try {
       retry = await findLavalinkAlternative(
         failedTrack.searchQuery,
