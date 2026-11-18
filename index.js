@@ -278,6 +278,7 @@ async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 
   let stderr = '';
   child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-2000); });
   child.on('error', error => console.error('Audio FFmpeg process error:', error.message || error));
+  child.stdout.on('close', () => { if (!child.killed && child.exitCode === null) child.kill('SIGTERM'); });
   child.on('close', code => {
     if (code !== 0) console.error('Audio FFmpeg process ended with code ' + code + ':', stderr || 'no diagnostic output');
   });
@@ -893,7 +894,10 @@ async function getDashboardMusicStatus(guildId) {
   if (!queue) return { playing: false, paused: false, position: 0, duration: 0, title: '', channelId: '' };
   const track = queue.current;
   const playing = !!track && (queue.player.state.status === AudioPlayerStatus.Playing || queue.player.state.status === AudioPlayerStatus.Paused);
-  const elapsed = track && track.startedAt ? Math.max(0, (Date.now() - track.startedAt) / 1000) : 0;
+  const resource = queue.player.state && queue.player.state.resource;
+  const elapsed = resource && Number.isFinite(resource.playbackDuration)
+    ? Math.max(0, resource.playbackDuration / 1000)
+    : (track && track.startedAt ? Math.max(0, (Date.now() - track.startedAt) / 1000) : 0);
   const position = track ? Math.max(0, (Number(track.startOffset) || 0) + elapsed) : 0;
   return {
     playing,
