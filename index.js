@@ -260,27 +260,56 @@ async function getYtDlpMediaUrl(url) {
 
 async function createSeekableAudioProcess(track, startSeconds = 0, endSeconds = 0) {
   if (!ffmpegPath) throw new Error('FFmpeg is not available on this host.');
-  const args = ['-hide_banner', '-loglevel', 'error'];
+  const args = ['-hide_banner', '-loglevel', 'warning'];
   const start = Math.max(0, Number(startSeconds) || 0);
-  if (start > 0) args.push('-ss', String(start));
-  let input;
-  if (track.source === 'local' && track.filePath) {
+  const isLocal = track.source === 'local' && track.filePath;
+  let mediaStream = null;
+
+  if (isLocal) {
     if (!fs.existsSync(track.filePath)) throw new Error('Saved audio file is missing.');
-    input = track.filePath;
+    if (start > 0) args.push('-ss', String(start));
+    args.push('-i', track.filePath);
   } else {
-    input = await getYtDlpMediaUrl(track.url);
+    // Stream media through yt-dlp instead of handing FFmpeg a bare CDN URL.
+    // This preserves extractor headers/cookies and works with sites that reject
+    // direct FFmpeg requests even when yt-dlp itself can download the media.
+    mediaStream = await createYoutubeStream(track.url);
+    args.push('-i', 'pipe:0');
+    // Input is a non-seekable pipe, so seek after the input and let FFmpeg decode
+    // forward to the requested position.
+    if (start > 0) args.push('-ss', String(start));
   }
-  args.push('-i', input);
+
   const end = Math.max(0, Number(endSeconds) || 0);
   if (end > start) args.push('-t', String(end - start));
   args.push('-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1');
-  const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  const child = spawn(ffmpegPath, args, {
+    stdio: [mediaStream ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+  });
   let stderr = '';
-  child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-2000); });
+  child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-3000); });
   child.on('error', error => console.error('Audio FFmpeg process error:', error.message || error));
-  child.stdout.on('close', () => { if (!child.killed && child.exitCode === null) child.kill('SIGTERM'); });
-  child.on('close', code => {
-    if (code !== 0) console.error('Audio FFmpeg process ended with code ' + code + ':', stderr || 'no diagnostic output');
+
+  if (mediaStream) {
+    mediaStream.on('error', error => {
+      console.error('yt-dlp media stream error:', error.message || error);
+      if (!child.killed) child.kill('SIGTERM');
+    });
+    child.stdin.on('error', error => {
+      if (error.code !== 'EPIPE') console.error('FFmpeg input stream error:', error.message || error);
+    });
+    mediaStream.pipe(child.stdin);
+    child.on('close', () => mediaStream.destroy());
+  }
+
+  child.on('close', (code, signal) => {
+    if (code !== 0) {
+      console.error(
+        'Audio FFmpeg process ended with code ' + code + (signal ? ' (signal ' + signal + ')' : '') + ':',
+        stderr || 'no diagnostic output'
+      );
+    }
   });
   return child;
 }
