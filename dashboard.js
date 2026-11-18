@@ -169,6 +169,13 @@ h2{font-size:19px;margin:0 0 16px}
 .check{display:flex;align-items:flex-start;gap:10px;margin:13px 0;color:#cbd6e9;line-height:1.5}
 .check input{width:17px;height:17px;flex:0 0 17px;margin:2px 0 0;accent-color:var(--accent)}
 .hint{font-size:12px;color:var(--muted);line-height:1.6}
+.player-progress{position:relative;width:100%;height:24px;margin-top:14px;display:flex;align-items:center;touch-action:pan-y}
+.player-progress-track{position:absolute;left:0;right:0;top:50%;height:5px;transform:translateY(-50%);overflow:hidden;border-radius:99px;background:#34435e;pointer-events:none}
+.player-progress-fill{width:100%;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--green));transform:scaleX(0);transform-origin:left center;will-change:transform}
+.player-progress-thumb{position:absolute;left:0;top:50%;width:13px;height:13px;border:2px solid #fff;border-radius:50%;background:var(--accent);box-shadow:0 1px 7px #0008;transform:translate(-50%,-50%);pointer-events:none;will-change:left}
+#playerProgressSlider{position:absolute;inset:0;width:100%;height:24px;margin:0;padding:0;opacity:0;cursor:pointer;z-index:2}
+.player-progress:focus-within .player-progress-track{box-shadow:0 0 0 2px #7887ff55}
+.player-progress:focus-within .player-progress-thumb{box-shadow:0 0 0 4px #7887ff44}
 .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;min-height:40px}
 #status{color:var(--green);font-size:13px}
 .preview{width:100%;min-width:0;background:#0b1426;border:1px dashed #425578;border-radius:13px;padding:16px;min-height:90px;overflow-wrap:anywhere}
@@ -251,7 +258,7 @@ h2{font-size:19px;margin:0 0 16px}
 <button id="playerSeek">Seek / play segment</button>
 <button id="playerStop" class="danger">■ Stop</button>
 </div>
-<input id="playerProgressSlider" type="range" min="0" max="100" step="0.01" value="0" style="width:100%;margin-top:14px;cursor:pointer"><div class="muted" id="playerProgress" style="margin-top:6px">00:00 / 00:00</div>
+<div class="player-progress"><div class="player-progress-track"><div id="playerProgressFill" class="player-progress-fill"></div></div><div id="playerProgressThumb" class="player-progress-thumb"></div><input id="playerProgressSlider" type="range" min="0" max="100" step="any" value="0" aria-label="Playback progress"></div><div class="muted" id="playerProgress" style="margin-top:6px">00:00 / 00:00</div>
 <div class="hint">Set a start position and optional end position to play just one selected part of the current track. You can also jump backward or forward by 10 seconds.</div>
 <span id="playerControlStatus" role="status" aria-live="polite"></span>
 </div>
@@ -338,7 +345,7 @@ function saveMusicHistory(title,url){const history=readMusicHistory().filter(ite
 function formatPlayerTime(seconds){const n=Math.max(0,Math.floor(Number(seconds)||0));return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0')}
 let dashboardPlayerSnapshot=null;
 let dashboardPlayerScrubbing=false;
-function renderDashboardPlayerProgress(previewPosition=null){if(!dashboardPlayerSnapshot)return;const state=dashboardPlayerSnapshot;const duration=Number(state.duration)||0;const elapsed=state.paused?0:(Date.now()-state.receivedAt)/1000;const rawPosition=(Number(state.position)||0)+elapsed;const position=previewPosition===null?(duration>0?Math.min(duration,rawPosition):rawPosition):previewPosition;const slider=$('playerProgressSlider');if(duration>0){slider.disabled=false;if(!dashboardPlayerScrubbing&&previewPosition===null)slider.value=Math.min(position,duration)}else{slider.disabled=true;slider.value=0}$('playerProgress').textContent=formatPlayerTime(position)+' / '+(duration>0?formatPlayerTime(duration):'--:--')+(state.paused?' • Paused':'')+' • Queue: '+(state.queueLength||0)}
+function renderDashboardPlayerProgress(previewPosition=null){if(!dashboardPlayerSnapshot)return;const state=dashboardPlayerSnapshot;const duration=Number(state.duration)||0;const elapsed=state.paused?0:(Date.now()-state.receivedAt)/1000;const rawPosition=(Number(state.position)||0)+elapsed;const position=previewPosition===null?(duration>0?Math.min(duration,rawPosition):rawPosition):previewPosition;const slider=$('playerProgressSlider');const safePosition=duration>0?Math.max(0,Math.min(position,duration)):0;const progress=duration>0?safePosition/duration:0;const fill=$('playerProgressFill');const thumb=$('playerProgressThumb');if(fill)fill.style.transform='scaleX('+progress+')';if(thumb)thumb.style.left=(progress*100)+'%';if(duration>0){slider.disabled=false;if(!dashboardPlayerScrubbing&&previewPosition===null)slider.value=safePosition}else{slider.disabled=true;slider.value=0}$('playerProgress').textContent=formatPlayerTime(position)+' / '+(duration>0?formatPlayerTime(duration):'--:--')+(state.paused?' • Paused':'')+' • Queue: '+(state.queueLength||0)}
 function animateDashboardPlayer(){if(!dashboardPlayerScrubbing)renderDashboardPlayerProgress();requestAnimationFrame(animateDashboardPlayer)}
 requestAnimationFrame(animateDashboardPlayer);
 async function refreshDashboardPlayer(){try{const state=await api('/api/music/player');dashboardPlayerSnapshot={...state,receivedAt:Date.now()};$('dashboardPlayerTitle').textContent=state.playing?(state.title||'Playing'):'Nothing is playing';const loop=$('playerLoop');if(loop){loop.textContent=state.loopMode==='track'?'🔂 Loop on':'🔂 Loop off';loop.classList.toggle('active',state.loopMode==='track')}const slider=$('playerProgressSlider');const duration=Number(state.duration)||0;slider.max=duration>0?duration:1;slider.disabled=duration<=0;if(duration>0&&!dashboardPlayerScrubbing&&document.activeElement!==slider)slider.value=Math.min(state.position||0,duration);else if(duration<=0)slider.value=0;if(state.segmentEnd&&!$('playerSegmentEnd').value)$('playerSegmentEnd').value=state.segmentEnd;renderDashboardPlayerProgress()}catch(e){$('dashboardPlayerTitle').textContent='Player status unavailable'}}
