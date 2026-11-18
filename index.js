@@ -130,7 +130,7 @@ function addYoutubeExtractorOptions(args, cookiePath, useBgutil) {
     args.push('--plugin-dirs', path.join(BGUTIL_ROOT, 'plugin'));
     args.push('--js-runtimes', 'node');
     args.push('--extractor-args', 'youtubepot-bgutilscript:server_home=' + path.join(BGUTIL_ROOT, 'server'));
-    args.push('--extractor-args', 'youtube:player-client=mweb,tv,web_safari');
+    args.push('--extractor-args', 'youtube:player_client=mweb');
   }
 }
 
@@ -440,6 +440,165 @@ function saveMusicPanelState() {
   } catch (error) {
     console.warn('Music panel state could not be saved:', error.message || error);
   }
+}
+
+const MUSIC_REQUEST_CLEANUP_FILE = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-request-cleanup.json');
+const MUSIC_REQUEST_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const MUSIC_REQUEST_CLEANUP_CHECK_MS = 5 * 60 * 1000;
+const musicRequestCleanupRunning = new Set();
+let musicRequestCleanupTimer = null;
+
+function loadMusicRequestCleanupState() {
+  try {
+    fs.mkdirSync(path.dirname(MUSIC_REQUEST_CLEANUP_FILE), { recursive: true });
+    if (!fs.existsSync(MUSIC_REQUEST_CLEANUP_FILE)) return {};
+    const parsed = JSON.parse(fs.readFileSync(MUSIC_REQUEST_CLEANUP_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    console.warn('Music request cleanup state could not be loaded:', error.message || error);
+    return {};
+  }
+}
+
+const musicRequestCleanupState = loadMusicRequestCleanupState();
+
+function saveMusicRequestCleanupState() {
+  try {
+    fs.mkdirSync(path.dirname(MUSIC_REQUEST_CLEANUP_FILE), { recursive: true });
+    const temporaryFile = MUSIC_REQUEST_CLEANUP_FILE + '.tmp';
+    fs.writeFileSync(temporaryFile, JSON.stringify(musicRequestCleanupState, null, 2), { mode: 0o600 });
+    fs.renameSync(temporaryFile, MUSIC_REQUEST_CLEANUP_FILE);
+  } catch (error) {
+    console.warn('Music request cleanup state could not be saved:', error.message || error);
+  }
+}
+
+async function deleteMemberMessagesFromMusicRequestChannel(channel) {
+  let before;
+  let deletedCount = 0;
+  let scannedCount = 0;
+  const bulkDeleteCutoff = Date.now() - (14 * 24 * 60 * 60 * 1000) + 60_000;
+
+  while (true) {
+    const fetchOptions = { limit: 100 };
+    if (before) fetchOptions.before = before;
+    const page = await channel.messages.fetch(fetchOptions);
+    if (!page.size) break;
+
+    scannedCount += page.size;
+    const memberMessages = page.filter(message =>
+      message.author && !message.author.bot && !message.webhookId
+    );
+    const recentMessages = memberMessages.filter(message => message.createdTimestamp >= bulkDeleteCutoff);
+    const olderMessages = memberMessages.filter(message => message.createdTimestamp < bulkDeleteCutoff);
+
+    if (recentMessages.size > 1) {
+      const deleted = await channel.bulkDelete(recentMessages, true);
+      deletedCount += deleted.size;
+    } else if (recentMessages.size === 1) {
+      const message = recentMessages.first();
+      await message.delete().then(() => { deletedCount += 1; }).catch(error => {
+        if (error.code !== 10008 && error.code !== 10003) throw error;
+      });
+    }
+
+    for (const message of olderMessages.values()) {
+      await message.delete().then(() => { deletedCount += 1; }).catch(error => {
+        if (error.code !== 10008 && error.code !== 10003) throw error;
+      });
+    }
+
+    const oldestMessage = page.last();
+    if (!oldestMessage || oldestMessage.id === before || page.size < 100) break;
+    before = oldestMessage.id;
+  }
+
+  return { deletedCount, scannedCount };
+}
+
+async function checkMusicRequestCleanup(readyClient) {
+  for (const guild of readyClient.guilds.cache.values()) {
+    const guildSettings = getDashboardSettings(guild.id);
+    const musicSettings = guildSettings && guildSettings.music ? guildSettings.music : {};
+    const requestChannelId = String(musicSettings.requestChannelId || '').trim();
+    if (!musicSettings.enabled || !requestChannelId) continue;
+
+    const saved = musicRequestCleanupState[guild.id];
+    if (
+      !saved ||
+      saved.channelId !== requestChannelId ||
+      !Number.isFinite(Number(saved.lastCleanupAt))
+    ) {
+      musicRequestCleanupState[guild.id] = {
+        channelId: requestChannelId,
+        lastCleanupAt: Date.now(),
+      };
+      saveMusicRequestCleanupState();
+      const selectedChannel = guild.channels.cache.get(requestChannelId);
+      console.log(
+        'Daily music request cleanup scheduled for #' +
+        (selectedChannel ? selectedChannel.name : requestChannelId) +
+        '; the first cleanup will run in 24 hours.'
+      );
+      continue;
+    }
+
+    if (Date.now() - Number(saved.lastCleanupAt) < MUSIC_REQUEST_CLEANUP_INTERVAL_MS) continue;
+    if (musicRequestCleanupRunning.has(guild.id)) continue;
+
+    musicRequestCleanupRunning.add(guild.id);
+    try {
+      const channel = await guild.channels.fetch(requestChannelId).catch(() => null);
+      if (!channel || !channel.isTextBased() || !channel.messages || typeof channel.messages.fetch !== 'function') {
+        console.warn('Daily music request cleanup skipped: selected channel is unavailable or is not a text channel.');
+        continue;
+      }
+
+      const botMember = guild.members.me || await guild.members.fetch(readyClient.user.id).catch(() => null);
+      const permissions = botMember && channel.permissionsFor(botMember);
+      const requiredPermissions = [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageMessages,
+      ];
+      if (!permissions || requiredPermissions.some(permission => !permissions.has(permission))) {
+        console.warn(
+          'Daily music request cleanup needs View Channel, Read Message History and Manage Messages in #' +
+          channel.name + '. The cleanup will retry automatically.'
+        );
+        continue;
+      }
+
+      const result = await deleteMemberMessagesFromMusicRequestChannel(channel);
+      musicRequestCleanupState[guild.id] = {
+        channelId: requestChannelId,
+        lastCleanupAt: Date.now(),
+      };
+      saveMusicRequestCleanupState();
+      console.log(
+        'Daily music request cleanup completed in #' + channel.name +
+        ': deleted ' + result.deletedCount + ' member messages; scanned ' +
+        result.scannedCount + ' messages. Bot messages and the music panel were kept.'
+      );
+    } catch (error) {
+      console.error('Daily music request cleanup failed; it will retry automatically:', error.stack || error);
+    } finally {
+      musicRequestCleanupRunning.delete(guild.id);
+    }
+  }
+}
+
+function startMusicRequestCleanupScheduler(readyClient) {
+  if (musicRequestCleanupTimer) return;
+  const runCheck = () => {
+    void checkMusicRequestCleanup(readyClient).catch(error =>
+      console.error('Music request cleanup scheduler failed:', error.stack || error)
+    );
+  };
+  runCheck();
+  musicRequestCleanupTimer = setInterval(runCheck, MUSIC_REQUEST_CLEANUP_CHECK_MS);
+  if (typeof musicRequestCleanupTimer.unref === 'function') musicRequestCleanupTimer.unref();
+  console.log('Daily music request cleanup scheduler started.');
 }
 
 async function createFallbackGifAttachment() {
@@ -1843,6 +2002,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   logFfmpegVersion();
   console.log('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic);
+  startMusicRequestCleanupScheduler(readyClient);
   console.log(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
   console.log('Bot activity is cleared. Use /activity to set it.');
