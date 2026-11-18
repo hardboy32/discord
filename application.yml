@@ -29,6 +29,9 @@ plugins:
       url: "http://127.0.0.1:8001"
       password: "${YT_CIPHER_PASSWORD}"
       userAgent: "hardboy-discord-lavalink"
+    oauth:
+      enabled: true
+      refreshToken: "${YT_OAUTH_REFRESH_TOKEN:}"
     clients:
       - WEBEMBEDDED
       - TVHTML5_SIMPLY
@@ -40,3 +43,4 @@ plugins:
 logging:
   level:
     root: WARN
+    dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO
