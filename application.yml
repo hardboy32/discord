@@ -33,6 +33,7 @@ plugins:
       enabled: true
       refreshToken: "${YT_OAUTH_REFRESH_TOKEN:}"
     clients:
+      - TV
       - WEBEMBEDDED
       - TVHTML5_SIMPLY
       - WEB
