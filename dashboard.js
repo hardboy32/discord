@@ -1268,6 +1268,7 @@ function setBotActivity(client, partial) {
 }
 
 function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, sendWelcomeTest) {
+  startBirthdayReminderScheduler(client);
   if (!CLIENT_ID || !CLIENT_SECRET || !SESSION_SECRET || !REDIRECT_URI) {
     console.warn('Dashboard is disabled: configure DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_SESSION_SECRET and DASHBOARD_REDIRECT_URI.');
     return;
@@ -2051,7 +2052,6 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
       return send(res, status, { error: status === 413 ? 'Request too large' : status === 400 ? (error.message || 'Bad request') : 'Internal server error' });
     }
   });
-  startBirthdayReminderScheduler(client);
   server.listen(PORT, '0.0.0.0', () => console.log('Dashboard listening on port ' + PORT + ' for server ' + GUILD_ID));
   return server;
 }
