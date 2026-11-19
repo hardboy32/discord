@@ -423,7 +423,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 #page-reaction-roles .panel{padding:14px}
 #page-reaction-roles h2{margin:0 0 10px;font-size:16px}
 #page-reaction-roles .rr-builder{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,260px);gap:8px;align-items:end}
-#page-reaction-roles .rr-message{margin-top:8px}#page-reaction-roles .rr-message-editor{min-height:58px;max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;background:#0b1426;border:1px solid var(--line);border-radius:10px;color:var(--text);font:inherit;line-height:1.5;outline:none}#page-reaction-roles .rr-message-editor:focus{border-color:var(--accent);box-shadow:0 0 0 2px #7887ff22}#page-reaction-roles .rr-message-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none}#page-reaction-roles .rr-message-editor .rr-inline-emoji{display:inline-block;width:1.35em;height:1.35em;object-fit:contain;vertical-align:middle;margin:0 1px}
+#page-reaction-roles .rr-message{margin-top:8px}#page-reaction-roles .rr-editor-toolbar{display:flex;gap:4px;align-items:center;flex-wrap:wrap;padding:6px;background:#111b30;border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0}#page-reaction-roles .rr-editor-toolbar button{min-width:32px;padding:5px 8px;font-size:12px;background:#1b2942;color:var(--text);border:1px solid var(--line);border-radius:6px;cursor:pointer}#page-reaction-roles .rr-editor-toolbar button:hover{background:#33476a}#page-reaction-roles .rr-editor-toolbar span{width:1px;height:20px;background:var(--line);margin:0 3px}#page-reaction-roles .rr-message-editor{min-height:90px;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;background:#0b1426;border:1px solid var(--line);border-radius:0 0 10px 10px;color:var(--text);font:inherit;line-height:1.5;outline:none}#page-reaction-roles .rr-message-editor:focus{border-color:var(--accent);box-shadow:0 0 0 2px #7887ff22}#page-reaction-roles .rr-message-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none}#page-reaction-roles .rr-message-editor .rr-inline-emoji{display:inline-block;width:1.35em;height:1.35em;object-fit:contain;vertical-align:middle;margin:0 1px}
 #page-reaction-roles .rr-mappings{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:6px;max-height:300px;overflow:auto;padding:2px}
 #page-reaction-roles .rr-row{display:grid;grid-template-columns:60px minmax(0,1fr) 30px;gap:5px;align-items:center;padding:5px;background:#111b30;border:1px solid var(--line);border-radius:9px}
 #page-reaction-roles .rr-emoji-gallery{display:flex;gap:6px;flex-wrap:wrap;max-height:132px;overflow:auto;padding:7px;background:#111b30;border:1px solid var(--line);border-radius:9px;margin:7px 0}
@@ -610,7 +610,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <section id="page-xp" class="page hidden"><div class="panel"><h2>XP management</h2><p class="muted">Search for a server member, check their current XP, then add or remove points manually.</p><div class="actions"><button id="xpLoadAllButton" class="secondary" type="button">Load all server members</button><span id="xpLoadAllStatus" role="status"></span></div><div class="formrow"><label class="field">Search member by username or display name<input id="xpMemberQuery" maxlength="80" placeholder="Type a member name"></label><div class="field" style="justify-content:end"><span>&nbsp;</span><button id="xpSearchButton" class="secondary">Search members</button></div></div><label class="field">Select member<select id="xpMemberSelect"><option value="">Load the member list or search first</option></select></label><div class="formrow"><label class="field">XP amount<input id="xpAmount" type="number" min="1" max="1000000" value="100"></label><label class="field">Reason (optional)<input id="xpReason" maxlength="180" placeholder="Manual adjustment"></label></div><div class="actions"><button id="xpAddButton">Add XP</button><button id="xpRemoveButton" class="danger">Remove XP</button><span id="xpStatus" role="status"></span></div><p class="hint" id="xpCurrentValue">Choose a member to view their current XP.</p></div></section><section id="page-reaction-roles" class="page hidden">
 <div class="panel"><h2>Reaction roles</h2>
 <div class="rr-builder"><label class="field">Channel<select id="reactionRoleChannel"></select></label><label class="field">Existing message ID (optional)<input id="reactionRoleMessageId" maxlength="25" placeholder="Leave empty to create new"></label></div>
-<label class="field rr-message">Message text<div id="reactionRoleContent" class="rr-message-editor" contenteditable="true" role="textbox" aria-label="Message text" aria-multiline="true" data-placeholder="Choose the roles you want by reacting below."></div></label>
+<label class="field rr-message">Message text<div class="rr-editor-toolbar"><button type="button" data-rr-command="bold"><b>B</b></button><button type="button" data-rr-command="italic"><i>I</i></button><button type="button" data-rr-command="underline"><u>U</u></button><button type="button" data-rr-command="strikeThrough"><s>S</s></button><span></span><button type="button" data-rr-wrap="code">Code</button><button type="button" data-rr-wrap="spoiler">Spoiler</button><button type="button" data-rr-block="quote">Quote</button><button type="button" data-rr-block="codeblock">Code block</button><span></span><button type="button" data-rr-command="insertUnorderedList">• List</button><button type="button" data-rr-command="insertOrderedList">1. List</button><button type="button" data-rr-link>Link</button><button type="button" data-rr-clear>Clear</button></div><div id="reactionRoleContent" class="rr-message-editor" contenteditable="true" role="textbox" aria-label="Message text" aria-multiline="true" data-placeholder="Choose the roles you want by reacting below."></div></label>
 
 <div class="rr-tools"><b style="font-size:14px">Emoji → role</b><span class="tag" id="reactionRoleCount">0 mappings</span><span style="flex:1"></span><button id="addReactionRoleMapping" class="secondary" type="button">+ Add</button></div>
 <div><b style="font-size:13px">Server emojis</b><p class="rr-help">Click an emoji to insert it into the message or selected mapping.</p><div id="reactionRoleEmojiGallery" class="rr-emoji-gallery"><span class="rr-emoji-empty">Loading server emojis…</span></div></div>
@@ -647,18 +647,52 @@ let activeReactionEmojiInput=null;
 let activeReactionMessageTextarea=false;
 $('reactionRoleContent').addEventListener('focus',()=>{activeReactionMessageTextarea=true;activeReactionEmojiInput=null});
 function reactionRoleMessageText(){
-  const root=$('reactionRoleContent');
+  const root=$('reactionRoleContent'),tick=String.fromCharCode(96);
   function read(node){
     if(node.nodeType===3)return node.nodeValue||'';
     if(node.nodeType!==1)return '';
-    if(node.tagName==='IMG')return node.dataset.discordEmoji||node.alt||'';
-    if(node.tagName==='BR')return '\\n';
-    let value=[...node.childNodes].map(read).join('');
-    if((node.tagName==='DIV'||node.tagName==='P')&&node.nextSibling)value+='\\n';
-    return value;
+    const tag=node.tagName;
+    if(tag==='IMG')return node.dataset.discordEmoji||node.alt||'';
+    if(tag==='BR')return '\n';
+    const inner=[...node.childNodes].map(read).join('');
+    if(tag==='B'||tag==='STRONG')return '**'+inner+'**';
+    if(tag==='I'||tag==='EM')return '*'+inner+'*';
+    if(tag==='U')return '__'+inner+'__';
+    if(tag==='S'||tag==='STRIKE'||tag==='DEL')return '~~'+inner+'~~';
+    if(node.dataset.mdFormat==='code')return tick+inner+tick;
+    if(node.dataset.mdFormat==='spoiler')return '||'+inner+'||';
+    if(tag==='A')return '['+inner+']('+node.getAttribute('href')+')';
+    if(tag==='BLOCKQUOTE')return inner.split('\n').map(line=>line?'> '+line:line).join('\n');
+    if(tag==='PRE')return tick+tick+tick+'\n'+inner.replace(/\n+$/,'')+'\n'+tick+tick+tick;
+    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+[...li.childNodes].map(read).join('')}).join('\n')}
+    if((tag==='DIV'||tag==='P')&&node.nextSibling)return inner+'\n';
+    return inner;
   }
-  return [...root.childNodes].map(read).join('').replace(/\\n+$/,'');
+  return [...root.childNodes].map(read).join('').replace(/\n+$/,'');
 }
+let rrEditorSavedRange=null;
+function saveReactionRoleEditorSelection(){const field=$('reactionRoleContent'),sel=window.getSelection();if(sel&&sel.rangeCount&&field.contains(sel.getRangeAt(0).commonAncestorContainer))rrEditorSavedRange=sel.getRangeAt(0).cloneRange()}
+function restoreReactionRoleEditorSelection(){const field=$('reactionRoleContent'),sel=window.getSelection();field.focus();if(rrEditorSavedRange&&field.contains(rrEditorSavedRange.commonAncestorContainer)){sel.removeAllRanges();sel.addRange(rrEditorSavedRange)}}
+function wrapReactionRoleSelection(kind){
+  restoreReactionRoleEditorSelection();const sel=window.getSelection();if(!sel||!sel.rangeCount)return;
+  const range=sel.getRangeAt(0),span=document.createElement('span');span.dataset.mdFormat=kind;
+  if(range.collapsed){span.textContent='text';range.insertNode(span)}else{span.appendChild(range.extractContents());range.insertNode(span)}
+  sel.removeAllRanges();const next=document.createRange();next.selectNodeContents(span);sel.addRange(next);saveReactionRoleEditorSelection();
+}
+function prefixReactionRoleLines(kind){
+  restoreReactionRoleEditorSelection();const sel=window.getSelection();if(!sel||!sel.rangeCount)return;
+  let prefix=kind==='quote'?'> ':kind==='codeblock'?String.fromCharCode(96).repeat(3)+'\n':'- ';
+  const value=(sel.toString()||'text').split('\n').map(line=>prefix+line).join('\n');
+  document.execCommand('insertText',false,value);saveReactionRoleEditorSelection();
+}
+document.querySelectorAll('[data-rr-command]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>{restoreReactionRoleEditorSelection();document.execCommand(button.dataset.rrCommand,false,null);saveReactionRoleEditorSelection()})});
+document.querySelectorAll('[data-rr-wrap]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>wrapReactionRoleSelection(button.dataset.rrWrap))});
+document.querySelectorAll('[data-rr-block]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>prefixReactionRoleLines(button.dataset.rrBlock))});
+$('reactionRoleContent').addEventListener('keyup',saveReactionRoleEditorSelection);$('reactionRoleContent').addEventListener('mouseup',saveReactionRoleEditorSelection);$('reactionRoleContent').addEventListener('input',saveReactionRoleEditorSelection);
+document.querySelector('[data-rr-link]').addEventListener('mousedown',e=>e.preventDefault());
+document.querySelector('[data-rr-link]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();const url=window.prompt('Enter link URL (https://...)');if(!url)return;if(!/^https?:\/\//i.test(url)){alert('Use an http:// or https:// link.');return}document.execCommand('createLink',false,url);saveReactionRoleEditorSelection()});
+document.querySelector('[data-rr-clear]').addEventListener('mousedown',e=>e.preventDefault());
+document.querySelector('[data-rr-clear]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();document.execCommand('removeFormat',false,null);saveReactionRoleEditorSelection()});
 function insertReactionRoleEmoji(code,item){
   const field=$('reactionRoleContent');
   const image=document.createElement('img');
