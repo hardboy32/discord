@@ -511,9 +511,11 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <label class="field">Song link<input id="musicUrl" type="url" maxlength="2000" placeholder="Paste a music/video page or direct audio link"></label>
 </div>
 <div class="actions"><button id="playDashboardMusic">▶ Play / add to queue</button><span id="musicStatus" role="status" aria-live="polite"></span></div>
-<div class="grid" style="margin-top:12px">
-<label class="field">Recently played<select id="musicHistorySelect"><option value="">No history yet</option></select></label>
-<div class="field"><span>Play a previous link</span><button id="playMusicHistory" class="secondary" type="button">▶ Play selected history</button></div>
+<div class="field" style="margin-top:12px">
+<label for="musicHistorySelect">Recently played</label>
+<select id="musicHistorySelect"><option value="">No history yet</option></select>
+<button id="playMusicHistory" class="secondary" type="button" style="margin-top:10px">▶ Play selected history</button>
+</div>
 </div>
 <p class="hint">Supports many sites through yt-dlp and direct audio URLs. Some sites may block bots or require login/subscription. Playlists and live streams may not work. The bot needs Connect and Speak permissions.</p>
 </div>
