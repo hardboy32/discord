@@ -1568,7 +1568,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           const channel = await liveGuild.channels.fetch(mappings[0].channelId).catch(() => null);
           const message = channel && isTextBasedChannel(channel) ? await channel.messages.fetch(messageId).catch(() => null) : null;
           if (!message) return send(res, 404, { error: 'The configured message could not be found.' });
-          if (message.author.id !== client.user.id) return send(res, 403, { error: 'Only messages written by this bot can be edited here.' });
+          const canEditContent = message.author.id === client.user.id;
           const editorMappings = [];
           for (const item of mappings) {
             let emojiInput = item.emoji;
@@ -1580,7 +1580,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
             }
             editorMappings.push({ emoji: emojiInput, emojiKey: item.emoji, roleId: item.roleId });
           }
-          return send(res, 200, { ok: true, content: message.content || '', channelId: channel.id, mappings: editorMappings });
+          return send(res, 200, { ok: true, content: message.content || '', channelId: channel.id, mappings: editorMappings, canEditContent });
         }
         if (reactionRoleEditMatch && req.method === 'PUT') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
@@ -1590,10 +1590,11 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           const channel = await liveGuild.channels.fetch(existingMappings[0].channelId).catch(() => null);
           const message = channel && isTextBasedChannel(channel) ? await channel.messages.fetch(messageId).catch(() => null) : null;
           if (!message) return send(res, 404, { error: 'The configured message could not be found.' });
-          if (message.author.id !== client.user.id) return send(res, 403, { error: 'Only messages written by this bot can be edited here.' });
+          const canEditContent = message.author.id === client.user.id;
           const body = await readBody(req, 100000);
-          const content = String(body.content || '').trim();
-          if (!content || content.length > 1800) return send(res, 400, { error: 'Enter message text (up to 1,800 characters).' });
+          const content = body.content === undefined ? null : String(body.content || '').trim();
+          if (content !== null && !canEditContent) return send(res, 403, { error: 'Only the bot can edit this message text. You can still update its role mappings.' });
+          if (content !== null && (!content || content.length > 1800)) return send(res, 400, { error: 'Enter message text (up to 1,800 characters).' });
           if (!Array.isArray(body.mappings) || body.mappings.length > 20) return send(res, 400, { error: 'Use no more than 20 emoji-to-role mappings.' });
           const botMember = liveGuild.members.me || await liveGuild.members.fetch(client.user.id).catch(() => null);
           if (!botMember || !botMember.permissions.has('ManageRoles')) return send(res, 403, { error: 'The bot needs the Manage Roles server permission.' });
@@ -1624,7 +1625,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
               savedMappings.push({ guildId: liveGuild.id, channelId: channel.id, messageId: message.id, emoji: key, roleId: item.roleId, createdByBot: true });
               if (!botAlreadyReacted) addedBotReactions.push(key);
             }
-            await message.edit({ content, allowedMentions: { parse: [] } });
+            if (content !== null) await message.edit({ content, allowedMentions: { parse: [] } });
           } catch (error) {
             for (const key of addedBotReactions) {
               const reaction = message.reactions.cache.find(item => (item.emoji.id || item.emoji.name) === key);
@@ -1642,7 +1643,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           }
           settings.reactionRoles = (settings.reactionRoles || []).filter(item => !(item.messageId === messageId && item.guildId === liveGuild.id)).concat(savedMappings);
           saveSettings();
-          return send(res, 200, { ok: true, messageId: message.id, reactionRoles: settings.reactionRoles });
+          return send(res, 200, { ok: true, messageId: message.id, reactionRoles: settings.reactionRoles, canEditContent });
         }
         if (req.method === 'POST' && url.pathname === '/api/reaction-roles') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
