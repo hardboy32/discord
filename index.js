@@ -40,6 +40,10 @@ const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim();
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODEL = (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
+const CLOUDFLARE_ACCOUNT_ID = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+const CLOUDFLARE_API_TOKEN = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+const CLOUDFLARE_CHAT_MODEL = (process.env.CLOUDFLARE_CHAT_MODEL || '@cf/meta/llama-3.1-8b-instruct').trim();
+const CLOUDFLARE_IMAGE_MODEL = (process.env.CLOUDFLARE_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
 
@@ -407,6 +411,8 @@ async function createFallbackGifAttachment() {
 
 const aiConversationHistory = new Map();
 const aiCooldowns = new Map();
+const aiImageCooldowns = new Map();
+const aiImageGenerationInFlight = new Set();
 function loadWarnings() {
   try {
     fs.mkdirSync(path.dirname(WARNINGS_FILE), { recursive: true });
@@ -1504,12 +1510,23 @@ async function registerCommands() {
 
 async function requestAIReply(message, prompt) {
   const aiSettings = getDashboardSettings(message.guildId).ai || {};
-  const provider = aiSettings.provider === 'groq' ? 'groq' : 'gemini';
+  const provider = ['groq', 'cloudflare'].includes(aiSettings.provider) ? aiSettings.provider : 'gemini';
   const providerConfig = provider === 'groq'
     ? { name: 'Groq', key: GROQ_API_KEY, model: GROQ_MODEL, endpoint: 'https://api.groq.com/openai/v1/chat/completions' }
-    : { name: 'Gemini', key: GEMINI_API_KEY, model: GEMINI_MODEL, endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' };
+    : provider === 'cloudflare'
+      ? {
+          name: 'Cloudflare Workers AI',
+          key: CLOUDFLARE_API_TOKEN,
+          model: CLOUDFLARE_CHAT_MODEL,
+          endpoint: 'https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(CLOUDFLARE_ACCOUNT_ID) + '/ai/v1/chat/completions',
+        }
+      : { name: 'Gemini', key: GEMINI_API_KEY, model: GEMINI_MODEL, endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' };
+  if (provider === 'cloudflare' && !CLOUDFLARE_ACCOUNT_ID) {
+    throw new Error('Cloudflare Workers AI is missing CLOUDFLARE_ACCOUNT_ID in Railway Variables.');
+  }
   if (!providerConfig.key) {
-    throw new Error(provider + ' is not configured. Add ' + (provider === 'groq' ? 'GROQ_API_KEY' : 'GEMINI_API_KEY') + ' in Railway Variables.');
+    const variableName = provider === 'groq' ? 'GROQ_API_KEY' : provider === 'cloudflare' ? 'CLOUDFLARE_API_TOKEN' : 'GEMINI_API_KEY';
+    throw new Error(providerConfig.name + ' is not configured. Add ' + variableName + ' in Railway Variables.');
   }
 
   const conversationKey = [message.guildId, message.channelId, message.author.id].join(':');
@@ -1579,7 +1596,7 @@ async function requestAIReply(message, prompt) {
       temperature: 0.55,
       max_tokens: 700,
     }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(provider === 'cloudflare' ? 15000 : 45000),
   });
 
   if (!response.ok) {
@@ -1621,6 +1638,66 @@ async function requestAIReply(message, prompt) {
   }
 
   return answer.trim();
+}
+
+async function generateCloudflareImage(prompt) {
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+    throw new Error('Image generation is not configured. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in Railway Variables.');
+  }
+
+  const cleanPrompt = String(prompt || '').trim();
+  if (!cleanPrompt) throw new Error('Write a description of the image you want to generate.');
+  if (cleanPrompt.length > 2048) {
+    throw new Error('The image description is too long. Please keep it under 2,048 characters.');
+  }
+
+  const endpoint = 'https://api.cloudflare.com/client/v4/accounts/' +
+    encodeURIComponent(CLOUDFLARE_ACCOUNT_ID) + '/ai/run/' + CLOUDFLARE_IMAGE_MODEL;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + CLOUDFLARE_API_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt: cleanPrompt, steps: 4 }),
+    signal: AbortSignal.timeout(45000),
+  });
+
+  if (!response.ok) {
+    const details = (await response.text().catch(() => '')).slice(0, 500);
+    console.error('Cloudflare image generation failed:', response.status, details);
+    if (response.status === 429) throw new Error('Cloudflare Workers AI usage limit has been reached. Please try again later.');
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Cloudflare API token is invalid or does not have permission to run Workers AI models.');
+    }
+    throw new Error('Cloudflare could not generate the image right now (HTTP ' + response.status + ').');
+  }
+
+  let contentType = response.headers.get('content-type') || 'image/png';
+  let imageBuffer;
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    const encodedImage = payload && payload.result && payload.result.image
+      ? payload.result.image
+      : payload && payload.image;
+    if (typeof encodedImage !== 'string' || !encodedImage.trim()) {
+      throw new Error('Cloudflare returned a response without an image.');
+    }
+    const dataUriMatch = encodedImage.match(/^data:(image\/[a-z0-9.+-]+);base64,/i);
+    if (dataUriMatch) contentType = dataUriMatch[1].toLowerCase();
+    imageBuffer = Buffer.from(encodedImage.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, ''), 'base64');
+  } else {
+    imageBuffer = Buffer.from(await response.arrayBuffer());
+  }
+
+  if (!imageBuffer.length) throw new Error('Cloudflare returned an empty image.');
+  if (imageBuffer.length > 20 * 1024 * 1024) throw new Error('The generated image is too large to upload to Discord.');
+
+  const isJpeg = contentType.includes('jpeg') || (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8);
+  return {
+    buffer: imageBuffer,
+    filename: isJpeg ? 'hardbot-generated.jpg' : 'hardbot-generated.png',
+  };
 }
 
 function extractMusicQuery(prompt) {
@@ -1673,6 +1750,7 @@ async function enqueueTrackFromMessage(message, query) {
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot || message.__autoModBlocked || !client.user) return;
   const guildSettings = getDashboardSettings(message.guildId);
+  const aiSettings = guildSettings.ai || {};
   const requestChannelId = String(guildSettings.music && guildSettings.music.requestChannelId || '');
   if (guildSettings.music.enabled && requestChannelId && message.channelId === requestChannelId) {
     const query = String(message.content || '').trim();
@@ -1693,6 +1771,61 @@ client.on(Events.MessageCreate, async (message) => {
     }
     return;
   }
+  const imageChannelId = String(aiSettings.imageChannelId || '').trim();
+  if (imageChannelId && message.channelId === imageChannelId) {
+    const prompt = String(message.content || '').trim();
+    if (!prompt) {
+      await message.reply({ content: 'Write an image description in this channel and I’ll generate it.', allowedMentions: { repliedUser: false } }).catch(() => {});
+      return;
+    }
+    if (prompt.length > 2048) {
+      await message.reply({ content: 'The image description is too long. Please keep it under 2,048 characters.', allowedMentions: { repliedUser: false } }).catch(() => {});
+      return;
+    }
+
+    const cooldownKey = message.guildId + ':' + message.author.id;
+    const now = Date.now();
+    const lastImageRequest = aiImageCooldowns.get(cooldownKey) || 0;
+    if (now - lastImageRequest < 20000) {
+      await message.reply({ content: 'Please wait a little before requesting another image.', allowedMentions: { repliedUser: false } }).catch(() => {});
+      return;
+    }
+    if (aiImageGenerationInFlight.has(message.guildId)) {
+      await message.reply({ content: 'Another image is being generated in this server. Please wait until it finishes.', allowedMentions: { repliedUser: false } }).catch(() => {});
+      return;
+    }
+
+    aiImageGenerationInFlight.add(message.guildId);
+    aiImageCooldowns.set(cooldownKey, now);
+    let statusMessage = null;
+    try {
+      await message.channel.sendTyping().catch(() => {});
+      statusMessage = await message.reply({ content: '🎨 Generating your image with FLUX.1 Schnell…', allowedMentions: { repliedUser: false } });
+      const generated = await generateCloudflareImage(prompt);
+      await statusMessage.edit({
+        content: '🖼️ Image generated for <@' + message.author.id + '>.',
+        files: [new AttachmentBuilder(generated.buffer, { name: generated.filename })],
+        allowedMentions: { parse: [] },
+      });
+    } catch (error) {
+      console.error('Cloudflare image channel failed:', error.stack || error);
+      aiImageCooldowns.delete(cooldownKey);
+      const userMessage = error && error.message && /Cloudflare|image|description|usage limit/i.test(error.message)
+        ? error.message
+        : 'Image generation failed. The server owner may need to check the Cloudflare settings.';
+      if (statusMessage) {
+        await statusMessage.edit({ content: '⚠️ ' + userMessage, allowedMentions: { parse: [] } }).catch(() => {});
+      } else {
+        await message.reply({ content: '⚠️ ' + userMessage, allowedMentions: { repliedUser: false } }).catch(() => {});
+      }
+    } finally {
+      aiImageGenerationInFlight.delete(message.guildId);
+    }
+    return;
+  }
+
+  const chatChannelId = String(aiSettings.chatChannelId || '').trim();
+  const isDedicatedAIChatChannel = Boolean(chatChannelId && message.channelId === chatChannelId);
   const isMentioned = message.mentions.users.has(client.user.id);
   const namePrefixPattern = /^\s*(?:\(\s*(?:محمد|ربات|bot|assistant)\s*\)|(?:محمد|ربات|bot|assistant))(?=$|\s|[،,:!؟?.])\s*[،,:!؟?.!\-]?\s*/iu;
   const hasNamePrefix = namePrefixPattern.test(message.content);
@@ -1706,12 +1839,12 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }
 
-  if (!hasNamePrefix && !isMentioned && !isReplyToBot) return;
+  if (!isDedicatedAIChatChannel && !hasNamePrefix && !isMentioned && !isReplyToBot) return;
 
-  const prompt = message.content
-    .replace(namePrefixPattern, '')
-    .replace(new RegExp('<@!?'+ client.user.id +'>', 'g'), '')
-    .trim();
+  const prompt = (isDedicatedAIChatChannel
+    ? message.content.replace(new RegExp('<@!?' + client.user.id + '>', 'g'), '')
+    : message.content.replace(namePrefixPattern, '').replace(new RegExp('<@!?' + client.user.id + '>', 'g'), '')
+  ).trim();
 
   if (!prompt) {
     await message.reply({
@@ -1760,7 +1893,7 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    if (!guildSettings.ai.enabled) return;
+    if (aiSettings.enabled === false) return;
     const answer = await requestAIReply(message, prompt);
     await message.reply({
       content: answer.length > 1900 ? answer.slice(0, 1890) + '…' : answer,
@@ -1876,7 +2009,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome));
   startMusicRequestCleanupScheduler(readyClient);
-  logDebug('AI providers configured: ' + [GEMINI_API_KEY ? 'Gemini (' + GEMINI_MODEL + ')' : null, GROQ_API_KEY ? 'Groq (' + GROQ_MODEL + ')' : null].filter(Boolean).join(', ') + (GEMINI_API_KEY || GROQ_API_KEY ? '.' : 'None. Add GEMINI_API_KEY and/or GROQ_API_KEY in Railway Variables.'));
+  logDebug('AI providers configured: ' + [GEMINI_API_KEY ? 'Gemini (' + GEMINI_MODEL + ')' : null, GROQ_API_KEY ? 'Groq (' + GROQ_MODEL + ')' : null, CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN ? 'Cloudflare Workers AI (' + CLOUDFLARE_CHAT_MODEL + ')' : null].filter(Boolean).join(', ') + (GEMINI_API_KEY || GROQ_API_KEY || (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN) ? '.' : 'None. Add the required AI API variables in Railway Variables.'));
   applySavedBotPresence(readyClient);
   logDebug('Saved bot status and activity restored.');
   try {
