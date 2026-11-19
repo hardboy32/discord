@@ -30,6 +30,20 @@ function loadSessions() {
 const sessions = loadSessions();
 const states = new Map();
 
+// Discord channel helpers with a type-based fallback for channel objects
+// that do not expose the discord.js convenience methods.
+function isTextBasedChannel(channel) {
+  if (!channel) return false;
+  if (typeof channel.isTextBased === 'function') return channel.isTextBased();
+  return [0, 5, 10, 11, 12, 15, 16].includes(Number(channel.type));
+}
+
+function isVoiceBasedChannel(channel) {
+  if (!channel) return false;
+  if (typeof channel.isVoiceBased === 'function') return channel.isVoiceBased();
+  return [2, 13].includes(Number(channel.type));
+}
+
 function saveSessions() {
   fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
   const now = Date.now();
@@ -1304,14 +1318,14 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const channels = await liveGuild.channels.fetch();
           const roles = await liveGuild.roles.fetch();
-          return send(res, 200, { roles: roles.filter(role => role.id !== liveGuild.id && !role.managed).map(role => ({ id: role.id, name: role.name })).sort((a,b)=>a.name.localeCompare(b.name)), user: session.user, guild: { id: liveGuild.id, name: liveGuild.name, memberCount: liveGuild.memberCount }, channels: channels.filter(c => c && c.guild && (c.isTextBased() || c.isVoiceBased() || c.type === 4)).map(c => ({ id: c.id, name: c.name, type: c.type })).sort((a,b)=>a.name.localeCompare(b.name)), settings, commands: [{name:'play',description:'Play a track by title or URL',category:'Music'},{name:'join',description:'Join your current voice channel',category:'Music'},{name:'queue',description:'Show the music queue',category:'Music'},{name:'skip',description:'Skip the current track',category:'Music'},{name:'pause',description:'Pause playback',category:'Music'},{name:'resume',description:'Resume playback',category:'Music'},{name:'stop',description:'Stop playback and clear the queue',category:'Music'},{name:'leave',description:'Leave the voice channel',category:'Music'},{name:'kick',description:'Kick a server member',category:'Moderation'},{name:'ban',description:'Ban a user',category:'Moderation'},{name:'timeout',description:'Temporarily time out a member',category:'Moderation'},{name:'untimeout',description:'Remove a member timeout',category:'Moderation'},{name:'clear',description:'Delete recent messages',category:'Moderation'},{name:'slowmode',description:'Set channel slowmode',category:'Moderation'},{name:'lock',description:'Lock this channel',category:'Moderation'},{name:'unlock',description:'Unlock this channel',category:'Moderation'},{name:'warn',description:'Add a warning to a member',category:'Moderation'},{name:'warnings',description:'List warnings for a member',category:'Moderation'},{name:'clearwarns',description:'Clear warnings for a member',category:'Moderation'},{name:'activity',description:'Change the bot activity',category:'Bot'},{name:'ping',description:'Check bot latency',category:'Bot'},{name:'help',description:'Show the command list',category:'Bot'}] });
+          return send(res, 200, { roles: roles.filter(role => role.id !== liveGuild.id && !role.managed).map(role => ({ id: role.id, name: role.name })).sort((a,b)=>a.name.localeCompare(b.name)), user: session.user, guild: { id: liveGuild.id, name: liveGuild.name, memberCount: liveGuild.memberCount }, channels: channels.filter(c => c && c.guild && (isTextBasedChannel(c) || isVoiceBasedChannel(c) || c.type === 4)).map(c => ({ id: c.id, name: c.name, type: c.type })).sort((a,b)=>a.name.localeCompare(b.name)), settings, commands: [{name:'play',description:'Play a track by title or URL',category:'Music'},{name:'join',description:'Join your current voice channel',category:'Music'},{name:'queue',description:'Show the music queue',category:'Music'},{name:'skip',description:'Skip the current track',category:'Music'},{name:'pause',description:'Pause playback',category:'Music'},{name:'resume',description:'Resume playback',category:'Music'},{name:'stop',description:'Stop playback and clear the queue',category:'Music'},{name:'leave',description:'Leave the voice channel',category:'Music'},{name:'kick',description:'Kick a server member',category:'Moderation'},{name:'ban',description:'Ban a user',category:'Moderation'},{name:'timeout',description:'Temporarily time out a member',category:'Moderation'},{name:'untimeout',description:'Remove a member timeout',category:'Moderation'},{name:'clear',description:'Delete recent messages',category:'Moderation'},{name:'slowmode',description:'Set channel slowmode',category:'Moderation'},{name:'lock',description:'Lock this channel',category:'Moderation'},{name:'unlock',description:'Unlock this channel',category:'Moderation'},{name:'warn',description:'Add a warning to a member',category:'Moderation'},{name:'warnings',description:'List warnings for a member',category:'Moderation'},{name:'clearwarns',description:'Clear warnings for a member',category:'Moderation'},{name:'activity',description:'Change the bot activity',category:'Bot'},{name:'ping',description:'Check bot latency',category:'Bot'},{name:'help',description:'Show the command list',category:'Bot'}] });
         }
         if (req.method === 'POST' && url.pathname === '/api/reaction-roles') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const body = await readBody(req, 100000);
           const channelId = String(body.channelId || '');
           const channel = await liveGuild.channels.fetch(channelId).catch(() => null);
-          if (!channel || !channel.isTextBased() || typeof channel.send !== 'function') return send(res, 400, { error: 'Choose a valid text channel.' });
+          if (!channel || !isTextBasedChannel(channel) || typeof channel.send !== 'function') return send(res, 400, { error: 'Choose a valid text channel.' });
           if (!Array.isArray(body.mappings) || body.mappings.length < 1 || body.mappings.length > 20) return send(res, 400, { error: 'Add between 1 and 20 emoji-to-role mappings.' });
           const botMember = liveGuild.members.me || await liveGuild.members.fetch(client.user.id).catch(() => null);
           if (!botMember || !botMember.permissions.has('ManageRoles')) return send(res, 403, { error: 'The bot needs the Manage Roles server permission.' });
