@@ -51,7 +51,7 @@ When a track starts, the bot posts or updates one music player message in the te
 - Configurable server event logs with 65 independent switches in the dashboard: member joins/leaves, bans/unbans, nickname/role/timeout/boost/avatar changes; voice joins/leaves/moves, mute/deafen, camera, streaming, stage and voice effects; message metadata, edit/delete/bulk-delete, pins, reactions, polls and optional typing events; AutoMod rules/actions; channels, threads, roles, server settings, emojis, stickers, soundboard, invites, webhooks, integrations, slash-command permissions, scheduled events and stage instances.
 - Optional Discord audit-log entry logging can identify administrative actions such as kicks and permission changes when the bot has **View Audit Log**. Some low-value or high-volume items (new messages, reactions, poll votes, typing, presence and detailed voice-state changes) start disabled.
 - Message content is never included in event logs. Message-create logs record only author and channel; edit/delete logs record author and channel only. Presence/activity logging is opt-in and requires the **Presence Intent** in Discord Developer Portal plus `ENABLE_PRESENCE_LOGGING=true` in Railway Variables.
-- Configure the destination channel and each log switch from the dashboard's Moderation page. Select-all and clear-all controls are available.
+- Configure the destination channel and each log switch from the dashboard's Server Logs page. Select-all and clear-all controls are available.
 - Configurable goodbye messages with `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
 
 Moderation commands require the corresponding Discord permissions. The bot role must be above members it is asked to moderate.
@@ -66,7 +66,7 @@ AI replies use the member's language, maintain a short in-memory conversation hi
 
 ### Web dashboard
 
-The dashboard is served by the same Node.js process at the Railway public domain. It includes Welcome, Moderation, Music, and AI settings. Changes are saved to `/app/data/dashboard-settings.json` and are applied by the bot. The dashboard is restricted to the configured server; only its owner or members with Manage Server / Administrator can sign in.
+The dashboard is served by the same Node.js process at the Railway public domain. It includes Overview, Welcome, Music, Commands, Moderation, Server Logs, Automatic Roles, AI, Community, XP Management, Reaction Roles, and Data Backup pages. Music playback and server-wide music options are grouped together; moderation actions and server event logs have separate pages. Changes are saved to `/app/data/dashboard-settings.json` and are applied by the bot. The dashboard is restricted to the configured server; only its owner or members with Manage Server / Administrator can sign in.
 
 To enable it:
 1. In Discord Developer Portal, open your application **OAuth2** page and copy the Client Secret.
