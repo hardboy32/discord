@@ -820,6 +820,10 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
             if (!item || typeof item.path !== 'string' || typeof item.content !== 'string') return send(res, 400, { error: 'Backup contains an invalid file entry.' });
             const name = item.path;
             if (name.length > 240 || name.includes('\\') || name.startsWith('/') || name.split('/').some(part => !part || part === '.' || part === '..' || part.startsWith('.'))) return send(res, 400, { error: 'Backup contains an unsafe file path.' });
+            if (typeof item.path === 'string' && path.extname(item.path).toLowerCase() === '.json') {
+              try { JSON.parse(item.content); }
+              catch { return send(res, 400, { error: 'Backup contains invalid JSON in ' + item.path + '.' }); }
+            }
             const bytes = Buffer.byteLength(item.content, 'utf8');
             totalBytes += bytes;
             if (bytes > 2 * 1024 * 1024 || totalBytes > 12 * 1024 * 1024) return send(res, 400, { error: 'Backup exceeds the allowed restore size.' });
@@ -959,7 +963,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
               backup.roles.length > 250 || backup.channels.length > 500) {
             return send(res, 400, { error: 'Invalid backup or this backup belongs to a different Discord server.' });
           }
-          if (backup.roles.some(role => !role || typeof role.id !== 'string' || typeof role.name !== 'string' || !/^\\d+$/.test(String(role.permissions))) ||
+          if (backup.roles.some(role => !role || typeof role.id !== 'string' || typeof role.name !== 'string' || !/^[0-9]+$/.test(String(role.permissions))) ||
               backup.channels.some(channel => !channel || typeof channel.id !== 'string' || typeof channel.name !== 'string' || ![0,2,4,5,13,15,16].includes(channel.type) || !Array.isArray(channel.overwrites))) {
             return send(res, 400, { error: 'The backup contains invalid role or channel data.' });
           }
@@ -1045,7 +1049,9 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
                 reason: 'Restore server structure backup',
               };
               if (channel) {
-                await channel.edit(options);
+                const editOptions = { ...options };
+                delete editOptions.type;
+                await channel.edit(editOptions);
                 channelsUpdated++;
               } else {
                 channel = await liveGuild.channels.create(options);
