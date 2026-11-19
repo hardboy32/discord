@@ -449,7 +449,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 </div>
 <label class="check"><input id="welcomeMention" type="checkbox"> Mention the new member (works with text and image/GIF)</label>
 <label class="check"><input id="welcomeEnabled" type="checkbox"> Enable welcome messages</label>
-</div><div><div class="eyebrow" style="margin-bottom:9px">Live preview</div><div class="preview"><b id="previewServer">Your server</b><div id="previewMessage" style="margin-top:12px">Welcome @NewMember to Your server!</div><div id="previewImagePlaceholder" class="hint hidden" style="margin-top:12px">Choose an image to see the image welcome preview.</div><img id="previewImage" class="hidden" alt="Welcome image preview"></div><div class="hint" style="margin-top:12px">The preview uses sample member data. Discord formatting may look slightly different.</div></div></div><div class="actions"><button id="saveWelcome">Save welcome settings</button><span id="welcomeStatus"></span></div></div><div class="panel"><h2>Goodbye message</h2><p class="muted">Send a custom message when a member leaves.</p><label class="check"><input id="goodbyeEnabled" type="checkbox"> Enable goodbye messages</label><label class="field">Send to channel<select id="goodbyeChannel"></select></label><label class="field">Message<textarea id="goodbyeMessage" maxlength="1000" placeholder="Goodbye {user}!"></textarea></label><p class="hint">Placeholders: {user}, {username}, {server}, {count}. Mentions are disabled in goodbye messages.</p><button id="saveGoodbye">Save goodbye settings</button> <span id="goodbyeStatus"></span></div></section>
+</div><div><div class="eyebrow" style="margin-bottom:9px">Live preview</div><div class="preview"><b id="previewServer">Your server</b><div id="previewMessage" style="margin-top:12px">Welcome @NewMember to Your server!</div><div id="previewImagePlaceholder" class="hint hidden" style="margin-top:12px">Choose an image to see the image welcome preview.</div><img id="previewImage" class="hidden" alt="Welcome image preview"></div><div class="hint" style="margin-top:12px">The preview uses sample member data. Discord formatting may look slightly different.</div></div></div><div class="actions"><button id="saveWelcome">Save welcome settings</button><button id="testWelcome" class="secondary" type="button">Send test welcome</button><span id="welcomeStatus"></span></div></div><div class="panel"><h2>Goodbye message</h2><p class="muted">Send a custom message when a member leaves.</p><label class="check"><input id="goodbyeEnabled" type="checkbox"> Enable goodbye messages</label><label class="field">Send to channel<select id="goodbyeChannel"></select></label><label class="field">Message<textarea id="goodbyeMessage" maxlength="1000" placeholder="Goodbye {user}!"></textarea></label><p class="hint">Placeholders: {user}, {username}, {server}, {count}. Mentions are disabled in goodbye messages.</p><button id="saveGoodbye">Save goodbye settings</button> <span id="goodbyeStatus"></span></div></section>
 <section id="page-music" class="page hidden">
 <div class="panel">
 <h2>Play music from the dashboard</h2>
@@ -666,6 +666,7 @@ async function playDashboardMusicUrl(url,button){const status=$('musicStatus');c
 $('playDashboardMusic').onclick=()=>playDashboardMusicUrl($('musicUrl').value.trim(),$('playDashboardMusic'));
 renderMusicHistory();
 $('welcomeType').addEventListener('change',updateWelcomeMode);$('welcomeMessage').addEventListener('input',preview);$('welcomeImage').addEventListener('change',()=>{const file=$('welcomeImage').files[0];if(!file)return;const allowedTypes=['image/gif','image/png','image/jpeg','image/webp'];if(file.size>8*1024*1024){alert('Image or GIF must be 8 MB or smaller.');$('welcomeImage').value='';return}if(!allowedTypes.includes(file.type)){alert('Choose a GIF, PNG, JPG or WebP image.');$('welcomeImage').value='';return}const reader=new FileReader();reader.onload=()=>{imageData=reader.result;$('previewImage').src=imageData;updateWelcomeMode()};reader.readAsDataURL(file)});
+$('testWelcome').onclick=async()=>{const button=$('testWelcome'),status=$('welcomeStatus');button.disabled=true;status.textContent='Sending test…';try{await api('/api/welcome-test',{method:'POST'});status.textContent='Test welcome sent to the selected channel.'}catch(e){status.textContent=e.message||'Welcome test failed.'}finally{button.disabled=false}};
 $('saveWelcome').onclick=async()=>{const status=$('welcomeStatus');status.textContent='Saving…';try{const mode=$('welcomeType').value;if(mode==='image'&&imageData){await api('/api/welcome-image',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({data:imageData})});imageData=''}await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({welcome:{enabled:$('welcomeEnabled').checked,channelId:$('welcomeChannel').value,message:$('welcomeMessage').value,type:mode,mention:$('welcomeMention').checked}})});status.textContent='Saved successfully.';await load()}catch(e){status.textContent=e.message}};
 $('saveGoodbye').onclick=async()=>{const status=$('goodbyeStatus');status.textContent='Saving…';try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({goodbye:{enabled:$('goodbyeEnabled').checked,channelId:$('goodbyeChannel').value,message:$('goodbyeMessage').value}})});status.textContent='Saved successfully.'}catch(e){status.textContent=e.message}};
 $('selectAllLogs').onclick=()=>LOG_EVENT_KEYS.forEach(key=>{const input=$('log_'+key);if(input)input.checked=true;});
@@ -680,7 +681,7 @@ $('restoreDataBackup').onclick=async()=>{const file=$('restoreBackupFile').files
 load();
 </script></body></html>`;
 }
-function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic) {
+function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, sendWelcomeTest) {
   if (!CLIENT_ID || !CLIENT_SECRET || !SESSION_SECRET || !REDIRECT_URI) {
     console.warn('Dashboard is disabled: configure DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_SESSION_SECRET and DASHBOARD_REDIRECT_URI.');
     return;
@@ -1055,6 +1056,18 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           settings.welcome.message = String(settings.welcome.message || defaults.welcome.message).slice(0, 500);
           saveSettings();
           return send(res, 200, { ok: true });
+        }
+        if (req.method === 'POST' && url.pathname === '/api/welcome-test') {
+          if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
+          if (typeof sendWelcomeTest !== 'function') return send(res, 503, { error: 'Welcome test is unavailable.' });
+          const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
+          if (!actor) return send(res, 404, { error: 'Could not load your server member profile.' });
+          try {
+            await sendWelcomeTest(actor);
+            return send(res, 200, { ok: true });
+          } catch (error) {
+            return send(res, 400, { error: error.message || 'Welcome test failed.' });
+          }
         }
         if (req.method === 'PUT' && url.pathname === '/api/welcome-image') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
