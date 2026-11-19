@@ -18,6 +18,7 @@ const {
   EmbedBuilder,
   Events,
   MessageFlags,
+  Partials,
   GatewayIntentBits,
   PermissionFlagsBits,
   REST,
@@ -46,6 +47,7 @@ if (!TOKEN) {
 }
 
 const client = new Client({
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -1742,6 +1744,41 @@ async function sendWelcomeMessage(member, config, channelOverride = null) {
     allowedMentions: shouldMention ? { users: [member.id] } : { parse: [] },
   });
 }
+
+
+async function applyReactionRole(reaction, user, addRole) {
+  try {
+    if (!user || user.bot) return;
+    if (reaction.partial) reaction = await reaction.fetch();
+    if (reaction.message && reaction.message.partial) await reaction.message.fetch();
+    const message = reaction.message;
+    const guild = message && message.guild;
+    if (!guild) return;
+    const config = getDashboardSettings(guild.id);
+    const emojiKey = reaction.emoji.id || reaction.emoji.name;
+    const mapping = (config.reactionRoles || []).find(item =>
+      item.guildId === guild.id && item.channelId === message.channelId &&
+      item.messageId === message.id && item.emoji === emojiKey
+    );
+    if (!mapping) return;
+    const member = await guild.members.fetch(user.id).catch(() => null);
+    if (!member) return;
+    const role = await guild.roles.fetch(mapping.roleId).catch(() => null);
+    if (!role || role.managed || !role.editable) {
+      console.warn('Reaction role skipped: role is missing or above the bot role.', mapping.roleId);
+      return;
+    }
+    if (addRole) {
+      if (!member.roles.cache.has(role.id)) await member.roles.add(role, 'Reaction role selection');
+    } else if (member.roles.cache.has(role.id)) {
+      await member.roles.remove(role, 'Reaction role deselection');
+    }
+  } catch (error) {
+    console.error('Reaction role update failed:', error.message || error);
+  }
+}
+client.on(Events.MessageReactionAdd, (reaction, user) => { void applyReactionRole(reaction, user, true); });
+client.on(Events.MessageReactionRemove, (reaction, user) => { void applyReactionRole(reaction, user, false); });
 
 client.on(Events.GuildMemberAdd, async (member) => {
   const config = getDashboardSettings(member.guild.id).welcome;
