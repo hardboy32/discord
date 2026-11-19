@@ -1768,7 +1768,7 @@ client.on(Events.MessageCreate, async (message) => {
     });
   } catch (error) {
     console.error('AI message handler failed:', error.stack || error);
-    const userMessage = /free AI usage limit/.test(error.message || '')
+    const userMessage = /usage limit/.test(error.message || '')
       ? 'I’ve reached the free AI limit for now. Please try again later.'
       : 'I can’t answer right now. The server owner may need to check the AI configuration.';
     await message.reply({
