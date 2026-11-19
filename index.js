@@ -1781,12 +1781,30 @@ client.on(Events.MessageReactionAdd, (reaction, user) => { void applyReactionRol
 client.on(Events.MessageReactionRemove, (reaction, user) => { void applyReactionRole(reaction, user, false); });
 
 client.on(Events.GuildMemberAdd, async (member) => {
-  const config = getDashboardSettings(member.guild.id).welcome;
-  if (!config.enabled || !config.channelId) return;
-  try {
-    await sendWelcomeMessage(member, config);
-  } catch (error) {
-    console.error('Welcome message failed:', error.message || error);
+  const serverSettings = getDashboardSettings(member.guild.id);
+  const autorole = serverSettings.autorole || {};
+  if (autorole.enabled) {
+    const selectedRoleIds = Array.isArray(autorole.roleIds) ? autorole.roleIds : (autorole.roleId ? [autorole.roleId] : []);
+    for (const roleId of selectedRoleIds.slice(0, 25)) {
+      try {
+        const role = await member.guild.roles.fetch(roleId).catch(() => null);
+        if (!role || role.managed || !role.editable) {
+          console.warn('Automatic role skipped: role is missing, managed, or above the bot role.', roleId);
+          continue;
+        }
+        if (!member.roles.cache.has(role.id)) await member.roles.add(role, 'Automatic role on member join');
+      } catch (error) {
+        console.error('Automatic role assignment failed for ' + roleId + ':', error.message || error);
+      }
+    }
+  }
+  const welcome = serverSettings.welcome;
+  if (welcome.enabled && welcome.channelId) {
+    try {
+      await sendWelcomeMessage(member, welcome);
+    } catch (error) {
+      console.error('Welcome message failed:', error.message || error);
+    }
   }
 });
 
