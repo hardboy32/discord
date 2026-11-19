@@ -709,7 +709,7 @@ function renderReactionRoleMarkdown(value){
       root.appendChild(list);continue;
     }
     const line=document.createElement('div');
-    if(lines[i])appendReactionRoleInline(line,lines[i]);else line.appendChild(document.createElement('br'));
+    if(lines[i])appendReactionRoleInline(line,lines[i]);
     root.appendChild(line);i++;
   }
   rrEditorSavedRange=null;
@@ -867,6 +867,7 @@ function renderReactionRoleList(){
         $('reactionRoleMessageId').value=messageId;
         $('reactionRoleMessageId').disabled=true;
         editingReactionRoleCanEditContent=!!result.canEditContent;
+        activeReactionMessageTextarea=editingReactionRoleCanEditContent;activeReactionEmojiInput=null;
         $('reactionRoleContent').contentEditable=editingReactionRoleCanEditContent?'true':'false';
         $('reactionRoleContent').classList.toggle('rr-readonly',!editingReactionRoleCanEditContent);
         document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=!editingReactionRoleCanEditContent});
@@ -1609,6 +1610,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           if (!botMember || !botMember.permissions.has('ManageRoles')) return send(res, 403, { error: 'The bot needs the Manage Roles server permission.' });
           const channelPermissions = channel.permissionsFor(botMember);
           if (!channelPermissions || !channelPermissions.has(['ViewChannel','ReadMessageHistory','AddReactions'])) return send(res, 403, { error: 'The bot needs View Channel, Read Message History and Add Reactions in this channel.' });
+          if (content !== null && !channelPermissions.has('SendMessages')) return send(res, 403, { error: 'The bot also needs Send Messages permission to edit its message text.' });
           const liveRoles = await liveGuild.roles.fetch();
           const normalized = [];
           const seen = new Set();
@@ -1631,6 +1633,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
               const botAlreadyReacted = !!(before && before.me);
               const reaction = await message.react(item.emojiInput);
               const key = reaction.emoji.id || reaction.emoji.name;
+              if (savedMappings.some(saved => saved.emoji === key)) throw new Error('Each emoji can be used only once in a message.');
               savedMappings.push({ guildId: liveGuild.id, channelId: channel.id, messageId: message.id, emoji: key, roleId: item.roleId, createdByBot: true });
               if (!botAlreadyReacted) addedBotReactions.push(key);
             }
