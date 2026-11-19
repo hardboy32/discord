@@ -137,7 +137,7 @@ const defaults = {
   music: { enabled: true, requestChannelId: '', artworkMode: 'missing' },
   activity: { status: 'online', type: 'none', text: '', url: '' },
   birthdays: [],
-  ai: { enabled: true },
+  ai: { enabled: true, provider: 'gemini' },
   community: { tickets: true, polls: true, giveaways: true, suggestions: true, verification: true, roleButtons: true, levels: true, economy: true, tempVoice: true, invites: true, streamAlerts: true, customCommands: true, backup: true },
   communityConfig: { tickets: { title: 'Support Center', description: 'Need help? Press the button below to open a private support ticket.', buttonLabel: 'Open a ticket' }, polls: { defaultDurationMinutes: 0, maxOptions: 4, allowVoteChange: true }, giveaways: { defaultDurationMinutes: 60, defaultWinners: 1, entryButtonLabel: 'Enter' }, suggestions: { title: 'New suggestion', allowAnonymous: false, approvedMessage: 'Approved', rejectedMessage: 'Rejected' }, verification: { title: 'Server verification', description: 'Press below to verify and receive access.', buttonLabel: 'Verify me' }, roleButtons: { label: 'Get role' }, levels: { xpMin: 12, xpMax: 20, cooldownSeconds: 60, announce: true }, economy: { dailyReward: 500, workMin: 100, workMax: 300, vipPrice: 2500, colorPrice: 1200, bonusPrice: 800, bonusCoins: 500 }, tempVoice: { nameTemplate: '{user} room', defaultLimit: 0, ownerCanManage: true }, invites: { announceJoins: false, messageTemplate: '{user} joined using an invite from {inviter}.' }, streamAlerts: { messageTemplate: '🔴 **{creator} is live on {platform}!**\n{title}\n{url}', checkIntervalSeconds: 120 }, customCommands: { allowEveryone: true, maxCommands: 50 }, backup: { includeChannels: true, includeRoles: true, includeOverwrites: false } }
 };
@@ -1971,6 +1971,11 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         if (req.method === 'PUT' && url.pathname === '/api/settings') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const body = await readBody(req);
+          if (body.ai !== undefined) {
+            if (!body.ai || typeof body.ai !== 'object' || Array.isArray(body.ai)) return send(res, 400, { error: 'Invalid AI settings.' });
+            if (body.ai.provider !== undefined && !['gemini', 'groq'].includes(body.ai.provider)) return send(res, 400, { error: 'Choose Gemini or Groq as the AI provider.' });
+            if (body.ai.enabled !== undefined && typeof body.ai.enabled !== 'boolean') return send(res, 400, { error: 'Invalid AI enabled setting.' });
+          }
           const liveChannels = await liveGuild.channels.fetch();
           const liveRoles = await liveGuild.roles.fetch();
           const channelIds = new Set(liveChannels.filter(c => c && c.guild).map(c => c.id));
