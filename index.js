@@ -38,6 +38,8 @@ const CLIENT_ID = (process.env.DISCORD_CLIENT_ID || '').trim();
 const BOT_OWNER_ID = (process.env.BOT_OWNER_ID || '').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim();
+const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
+const GROQ_MODEL = (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
 
@@ -1501,8 +1503,13 @@ async function registerCommands() {
 }
 
 async function requestAIReply(message, prompt) {
-  if (!GEMINI_API_KEY) {
-    throw new Error('AI is not configured. Add GEMINI_API_KEY in the hosting environment variables.');
+  const aiSettings = getDashboardSettings(message.guildId).ai || {};
+  const provider = aiSettings.provider === 'groq' ? 'groq' : 'gemini';
+  const providerConfig = provider === 'groq'
+    ? { name: 'Groq', key: GROQ_API_KEY, model: GROQ_MODEL, endpoint: 'https://api.groq.com/openai/v1/chat/completions' }
+    : { name: 'Gemini', key: GEMINI_API_KEY, model: GEMINI_MODEL, endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' };
+  if (!providerConfig.key) {
+    throw new Error(provider + ' is not configured. Add ' + (provider === 'groq' ? 'GROQ_API_KEY' : 'GEMINI_API_KEY') + ' in Railway Variables.');
   }
 
   const conversationKey = [message.guildId, message.channelId, message.author.id].join(':');
@@ -1560,14 +1567,14 @@ async function requestAIReply(message, prompt) {
     { role: 'user', content: cleanPrompt },
   ];
 
-  const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+  const response = await fetch(providerConfig.endpoint, {
     method: 'POST',
     headers: {
-      Authorization: 'Bearer ' + GEMINI_API_KEY,
+      Authorization: 'Bearer ' + providerConfig.key,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: GEMINI_MODEL,
+      model: providerConfig.model,
       messages,
       temperature: 0.55,
       max_tokens: 700,
@@ -1577,12 +1584,12 @@ async function requestAIReply(message, prompt) {
 
   if (!response.ok) {
     const details = (await response.text().catch(() => '')).slice(0, 500);
-    console.error('Gemini API request failed:', response.status, details);
-    if (response.status === 429) throw new Error('The free AI usage limit has been reached. Try again later.');
+    console.error(providerConfig.name + ' API request failed:', response.status, details);
+    if (response.status === 429) throw new Error('The ' + providerConfig.name + ' usage limit has been reached. Try again later.');
     if (response.status === 401 || response.status === 403) {
-      throw new Error('The AI API key is invalid or does not have permission to use this model.');
+      throw new Error('The ' + providerConfig.name + ' API key is invalid or does not have permission to use this model.');
     }
-    throw new Error('The Gemini service could not answer right now (HTTP ' + response.status + ').');
+    throw new Error(providerConfig.name + ' could not answer right now (HTTP ' + response.status + ').');
   }
 
   const data = await response.json();
@@ -1869,7 +1876,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome));
   startMusicRequestCleanupScheduler(readyClient);
-  logDebug(GEMINI_API_KEY ? 'AI chat is enabled via Gemini model ' + GEMINI_MODEL + '.' : 'AI chat is disabled: set GEMINI_API_KEY in Railway Variables.');
+  logDebug('AI providers configured: ' + [GEMINI_API_KEY ? 'Gemini (' + GEMINI_MODEL + ')' : null, GROQ_API_KEY ? 'Groq (' + GROQ_MODEL + ')' : null].filter(Boolean).join(', ') + (GEMINI_API_KEY || GROQ_API_KEY ? '.' : 'None. Add GEMINI_API_KEY and/or GROQ_API_KEY in Railway Variables.'));
   applySavedBotPresence(readyClient);
   logDebug('Saved bot status and activity restored.');
   try {
