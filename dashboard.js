@@ -476,6 +476,18 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
   .stats,.grid,.formrow{grid-template-columns:minmax(0,1fr)}
   .top{align-items:flex-start;flex-direction:column;min-height:0}
 }
+
+/* Keep the artwork selector and its save button aligned independently
+   from the responsive formrow layout used by other dashboard forms. */
+#page-music .artwork-mode-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:12px}
+#page-music .artwork-mode-row .field{min-width:0;margin:0}
+#page-music .artwork-mode-row select{width:100%}
+#page-music .artwork-mode-row button{align-self:end;white-space:nowrap;min-height:42px}
+#page-music .artwork-mode-status{display:block;min-height:0;margin-top:6px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+@media(max-width:520px){
+  #page-music .artwork-mode-row{grid-template-columns:minmax(0,1fr)}
+  #page-music .artwork-mode-row button{width:100%}
+}
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
 <button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="logs">☷ Server Logs</button><button data-page="autorole">⚙ Automatic roles on join</button><button data-page="ai">✦ AI settings</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="reaction-roles">🎭 Reaction roles</button><button data-page="backup">⬇ Data backup</button>
@@ -567,10 +579,11 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <div class="field"><span>Current artwork preview</span><div class="preview"><img id="musicFallbackPreview" alt="Current fallback music artwork" style="max-height:190px"></div></div>
 </div>
 <div class="actions"><button id="uploadMusicFallbackGif">⬆ Upload / replace GIF</button><span id="musicFallbackGifStatus" role="status" aria-live="polite"></span></div>
-<div class="formrow" style="margin-top:12px;align-items:end">
+<div class="artwork-mode-row">
 <label class="field">Artwork behavior<select id="musicArtworkMode"><option value="missing">Only when the song has no cover</option><option value="force">Force uploaded GIF on every song</option></select></label>
-<div class="actions" style="margin-top:0"><button id="saveMusicArtworkMode" type="button">Save artwork mode</button><span id="musicArtworkModeStatus" role="status" aria-live="polite"></span></div>
+<button id="saveMusicArtworkMode" type="button">Save artwork mode</button>
 </div>
+<span id="musicArtworkModeStatus" class="artwork-mode-status" role="status" aria-live="polite"></span>
 <p class="hint">“Force” replaces the track's own cover in the Discord music panel. “Only when missing” keeps each song's original cover whenever available. The setting is saved on Railway.</p>
 </div>
 </section>
