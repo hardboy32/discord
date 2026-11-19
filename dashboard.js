@@ -690,7 +690,7 @@ document.querySelectorAll('[data-rr-wrap]').forEach(button=>{button.addEventList
 document.querySelectorAll('[data-rr-block]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>prefixReactionRoleLines(button.dataset.rrBlock))});
 $('reactionRoleContent').addEventListener('keyup',saveReactionRoleEditorSelection);$('reactionRoleContent').addEventListener('mouseup',saveReactionRoleEditorSelection);$('reactionRoleContent').addEventListener('input',saveReactionRoleEditorSelection);
 document.querySelector('[data-rr-link]').addEventListener('mousedown',e=>e.preventDefault());
-document.querySelector('[data-rr-link]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();const url=window.prompt('Enter link URL (https://...)');if(!url)return;if(!/^https?:\/\//i.test(url)){alert('Use an http:// or https:// link.');return}document.execCommand('createLink',false,url);saveReactionRoleEditorSelection()});
+document.querySelector('[data-rr-link]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();const url=window.prompt('Enter link URL (https://...)');if(!url)return;if(!/^https?:\\/\\//i.test(url)){alert('Use an http:// or https:// link.');return}document.execCommand('createLink',false,url);saveReactionRoleEditorSelection()});
 document.querySelector('[data-rr-clear]').addEventListener('mousedown',e=>e.preventDefault());
 document.querySelector('[data-rr-clear]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();document.execCommand('removeFormat',false,null);saveReactionRoleEditorSelection()});
 function insertReactionRoleEmoji(code,item){
