@@ -2,6 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { ActivityType } = require('discord.js');
 
 const GUILD_ID = (process.env.DASHBOARD_GUILD_ID || '686002315148394502').trim();
 const CLIENT_ID = (process.env.DISCORD_CLIENT_ID || '').trim();
@@ -133,6 +134,7 @@ const defaults = {
   autorole: { enabled: false, roleId: '', roleIds: [] },
   reactionRoles: [],
   music: { enabled: true, requestChannelId: '', artworkMode: 'missing' },
+  activity: { status: 'online', type: 'none', text: '', url: '' },
   ai: { enabled: true },
   community: { tickets: true, polls: true, giveaways: true, suggestions: true, verification: true, roleButtons: true, levels: true, economy: true, tempVoice: true, invites: true, streamAlerts: true, customCommands: true, backup: true },
   communityConfig: { tickets: { title: 'Support Center', description: 'Need help? Press the button below to open a private support ticket.', buttonLabel: 'Open a ticket' }, polls: { defaultDurationMinutes: 0, maxOptions: 4, allowVoteChange: true }, giveaways: { defaultDurationMinutes: 60, defaultWinners: 1, entryButtonLabel: 'Enter' }, suggestions: { title: 'New suggestion', allowAnonymous: false, approvedMessage: 'Approved', rejectedMessage: 'Rejected' }, verification: { title: 'Server verification', description: 'Press below to verify and receive access.', buttonLabel: 'Verify me' }, roleButtons: { label: 'Get role' }, levels: { xpMin: 12, xpMax: 20, cooldownSeconds: 60, announce: true }, economy: { dailyReward: 500, workMin: 100, workMax: 300, vipPrice: 2500, colorPrice: 1200, bonusPrice: 800, bonusCoins: 500 }, tempVoice: { nameTemplate: '{user} room', defaultLimit: 0, ownerCanManage: true }, invites: { announceJoins: false, messageTemplate: '{user} joined using an invite from {inviter}.' }, streamAlerts: { messageTemplate: '🔴 **{creator} is live on {platform}!**\n{title}\n{url}', checkIntervalSeconds: 120 }, customCommands: { allowEveryone: true, maxCommands: 50 }, backup: { includeChannels: true, includeRoles: true, includeOverwrites: false } }
@@ -499,7 +501,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 }
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
-<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="logs">☷ Server Logs</button><button data-page="autorole">⚙ Automatic roles on join</button><button data-page="ai">✦ AI settings</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="reaction-roles">🎭 Reaction roles</button><button data-page="backup">⬇ Data backup</button>
+<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="logs">☷ Server Logs</button><button data-page="autorole">⚙ Automatic roles on join</button><button data-page="ai">✦ AI settings</button><button data-page="activity">◉ Activity</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="reaction-roles">🎭 Reaction roles</button><button data-page="backup">⬇ Data backup</button>
 </nav><div class="sidefoot">Single server • Secure admin access</div></aside><main>
 <header class="top"><div><div class="eyebrow">Control center</div><h1 id="pageTitle">Overview</h1><div class="muted" id="userName">Loading server…</div></div><div><span class="tag" id="serverName">Connected</span></div></header>
 <section id="page-overview" class="page"><div class="stats"><div class="stat"><span class="muted">Members</span><b id="memberCount">—</b></div><div class="stat"><span class="muted">Text channels</span><b id="channelCount">—</b></div><div class="stat"><span class="muted">Bot status</span><b style="color:var(--green)">Online</b></div></div><div class="panel" style="margin-top:18px"><h2>Welcome to your control center</h2><p class="muted">Manage welcome messages, moderation tools and bot modules from one place. Changes are saved to your Railway volume.</p><button onclick="showPage('welcome')">Configure welcome system</button></div><div class="panel"><h2>Quick access</h2><div class="grid"><button class="secondary" onclick="showPage('commands')">Browse bot commands</button><button class="secondary" onclick="showPage('moderation')">Moderation settings</button><button class="secondary" onclick="showPage('logs')">Server logs</button></div></div></section>
@@ -638,6 +640,25 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <div class="panel"><h2>AI assistant</h2><p class="muted">Control AI replies for this Discord server. The API key is kept in Railway Variables and is never displayed in the dashboard.</p><label class="check"><input id="aiEnabled" type="checkbox"> Enable AI replies</label><div class="actions"><button id="saveAISettings">Save AI settings</button><span id="aiStatus" role="status" aria-live="polite"></span></div></div>
 <div class="panel"><h2>Groq connection</h2><p class="muted">The bot uses Groq to generate AI responses. Configure the secret key and model in Railway.</p><div class="command"><div><b>GROQ_API_KEY</b><p>Required. Your private Groq API key.</p></div><span class="tag">Railway Variable</span></div><div class="command"><div><b>GROQ_MODEL</b><p>Optional. Model name. If omitted, the bot uses <code>openai/gpt-oss-20b</code>.</p></div><span class="tag">Railway Variable</span></div><p class="hint">To configure: open Railway → your bot service → Variables. Add or update <code>GROQ_API_KEY</code> and optionally <code>GROQ_MODEL</code>, then redeploy. Never paste your API key into Discord or share it with anyone.</p><p class="hint">If the key is missing, AI replies cannot work even when the switch above is enabled.</p></div>
 </section>
+
+<section id="page-activity" class="page hidden">
+<div class="panel">
+<h2>Bot Activity & Status</h2>
+<p class="muted">Control the status and activity displayed on the bot's Discord profile. Changes apply immediately and are saved on Railway, so they return after a restart. These settings affect the bot globally, not just one channel.</p>
+<div class="grid">
+<label class="field">Online status<select id="botPresenceStatus">
+<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="invisible">Invisible</option>
+</select></label>
+<label class="field">Activity type<select id="botActivityType">
+<option value="none">No activity</option><option value="playing">Playing</option><option value="watching">Watching</option><option value="listening">Listening to</option><option value="competing">Competing in</option><option value="streaming">Streaming</option>
+</select></label>
+<label class="field" id="botActivityTextWrap">Activity text<input id="botActivityText" maxlength="128" placeholder="Example: Minecraft or music"></label>
+<label class="field hidden" id="botActivityUrlWrap">Streaming link<input id="botActivityUrl" type="url" maxlength="500" placeholder="https://www.twitch.tv/yourchannel"></label>
+</div>
+<div class="actions"><button id="saveBotActivity" type="button">Save activity</button><button id="clearBotActivity" class="secondary" type="button">Clear activity</button><span id="botActivityStatus" role="status" aria-live="polite"></span></div>
+<p class="hint">The Streaming option only displays a Streaming activity and its Twitch/YouTube link on the bot profile. It does not broadcast video, share a screen, or start a Go Live stream. Activity text supports up to 128 characters.</p>
+</div>
+</section>
 <section id="page-community" class="page hidden">
 <div class="panel"><h2>Community features</h2><p class="muted">Enable or pause each community system. Setup details such as channels, roles and categories are configured with the listed Discord slash commands.</p>
 <div class="grid">
@@ -682,8 +703,17 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 </main></div><script>
 const LOG_EVENT_KEYS=["memberJoin","memberLeave","memberBan","memberUnban","memberNicknameUpdate","memberRolesUpdate","memberTimeoutUpdate","memberBoost","memberAvatarUpdate","voiceJoin","voiceLeave","voiceMove","voiceMute","voiceDeafen","voiceVideo","voiceStream","voiceStage","messageCreate","messageEdit","messageDelete","messageDeleteBulk","messagePin","messageReactionAdd","messageReactionRemove","messageReactionClear","pollVoteAdd","pollVoteRemove","automod","autoModerationRuleCreate","autoModerationRuleUpdate","autoModerationRuleDelete","auditLogEntry","channelCreate","channelDelete","channelUpdate","threadCreate","threadUpdate","threadDelete","threadMembersUpdate","roleCreate","roleDelete","roleUpdate","guildUpdate","emojiUpdate","stickerUpdate","soundboardCreate","soundboardUpdate","soundboardDelete","inviteCreate","inviteDelete","webhookUpdate","integrationUpdate","scheduledEventCreate","scheduledEventUpdate","scheduledEventDelete","scheduledEventUserAdd","scheduledEventUserRemove","stageInstanceCreate","stageInstanceUpdate","stageInstanceDelete","voiceEffect","typingStart","soundboardBulkUpdate","applicationCommandPermissionsUpdate","presenceUpdate"];
 const $=id=>document.getElementById(id);let data=null;let imageData='';
-function showPage(name){const page=$('page-'+name);if(!page)return;document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));page.classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));const titles={overview:'Overview',welcome:'Welcome builder',music:'Music',commands:'Commands',moderation:'Moderation',logs:'Server Logs',autorole:'Automatic roles on join',ai:'AI settings',community:'Community features',backup:'Data backup',xp:'XP management','reaction-roles':'Reaction roles'};$('pageTitle').textContent=titles[name]||'Dashboard'}
+function updateBotActivityFields(){
+  const type=$('botActivityType').value;
+  const noActivity=type==='none';
+  $('botActivityTextWrap').classList.toggle('hidden',noActivity);
+  $('botActivityUrlWrap').classList.toggle('hidden',type!=='streaming');
+  $('botActivityText').required=!noActivity;
+  $('botActivityUrl').required=type==='streaming';
+}
+function showPage(name){const page=$('page-'+name);if(!page)return;document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));page.classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));const titles={overview:'Overview',welcome:'Welcome builder',music:'Music',commands:'Commands',moderation:'Moderation',logs:'Server Logs',autorole:'Automatic roles on join',ai:'AI settings',activity:'Activity',community:'Community features',backup:'Data backup',xp:'XP management','reaction-roles':'Reaction roles'};$('pageTitle').textContent=titles[name]||'Dashboard'}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
+$('botActivityType').addEventListener('change',updateBotActivityFields);
 function options(select,channels){
   select.replaceChildren();
   const placeholder=document.createElement('option');
@@ -1004,7 +1034,7 @@ async function api(url,opts){const r=await fetch(url,opts);let j={};try{j=await 
 async function loadMusicFallbackPreview(){const image=$('musicFallbackPreview');if(!image)return;image.src='/api/music/fallback-artwork?cache='+Date.now();image.onerror=()=>{image.removeAttribute('src');image.alt='No uploaded GIF yet; the default artwork will be used.'}}
 $('saveMusicArtworkMode').onclick=async()=>{const button=$('saveMusicArtworkMode'),status=$('musicArtworkModeStatus'),mode=$('musicArtworkMode').value;button.disabled=true;status.textContent='Saving…';try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({music:{artworkMode:mode}})});if(data&&data.settings&&data.settings.music)data.settings.music.artworkMode=mode;status.textContent=mode==='force'?'Saved: uploaded GIF will replace every track cover.':'Saved: uploaded GIF will be used only when a track has no cover.'}catch(e){status.textContent=e.message||'Could not save artwork mode.'}finally{button.disabled=false}};
 $('uploadMusicFallbackGif').onclick=async()=>{const file=$('musicFallbackGif').files[0],status=$('musicFallbackGifStatus'),button=$('uploadMusicFallbackGif');if(!file){status.textContent='Choose a GIF first.';return}if(file.size>8*1024*1024){status.textContent='GIF must be 8 MB or smaller.';return}if(!/\.gif$/i.test(file.name)){status.textContent='Only GIF files are supported.';return}button.disabled=true;status.textContent='Uploading…';try{const encoded=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Could not read the GIF.'));reader.readAsDataURL(file)});await api('/api/music/fallback-artwork',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:file.name,data:encoded})});$('musicFallbackGif').value='';status.textContent='GIF uploaded. It will be used for tracks without cover art.';await loadMusicFallbackPreview()}catch(e){status.textContent=e.message||'GIF upload failed.'}finally{button.disabled=false}};
-async function load(){try{data=await api('/api/me');$('login').classList.add('hidden');$('app').classList.remove('hidden');$('serverName').textContent=data.guild.name;$('userName').textContent='Signed in as '+data.user.username;$('memberCount').textContent=data.guild.memberCount||'—';$('channelCount').textContent=data.channels.length;options($('welcomeChannel'),data.channels);options($('musicRequestChannel'),data.channels);options($('reactionRoleChannel'),data.channels);const musicVoiceSelect=$('musicVoiceChannel');musicVoiceSelect.innerHTML='<option value="">Select a voice channel</option>';data.channels.filter(c=>c.type===2).forEach(c=>{const option=document.createElement('option');option.value=c.id;option.textContent='🔊 '+c.name;musicVoiceSelect.appendChild(option)});const libraryVoiceSelect=$('musicLibraryVoiceChannel');libraryVoiceSelect.innerHTML='<option value="">Select a voice channel</option>';data.channels.filter(c=>c.type===2).forEach(c=>{const option=document.createElement('option');option.value=c.id;option.textContent='🔊 '+c.name;libraryVoiceSelect.appendChild(option)});await loadMusicLibrary();await loadMusicFallbackPreview();await refreshDashboardPlayer();if(musicPlayerRefresh)clearInterval(musicPlayerRefresh);musicPlayerRefresh=setInterval(refreshDashboardPlayer,3000);options($('goodbyeChannel'),data.channels);options($('logChannel'),data.channels);options($('actionChannel'),data.channels);const autoroleRolesRoot=$('autoroleRolesList');autoroleRolesRoot.replaceChildren();const s=data.settings;const selectedAutoroleIds=new Set((s.autorole.roleIds|| (s.autorole.roleId?[s.autorole.roleId]:[])).map(String));for(const role of data.roles){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=role.id;input.checked=selectedAutoroleIds.has(role.id);input.dataset.autoroleRole='true';const name=document.createElement('span');name.textContent=role.name;label.append(input,name);autoroleRolesRoot.appendChild(label)}$('musicArtworkMode').value=s.music.artworkMode==='force'?'force':'missing';$('welcomeEnabled').checked=s.welcome.enabled;$('welcomeChannel').value=s.welcome.channelId;$('welcomeMessage').value=s.welcome.message;$('welcomeType').value=s.welcome.type||'text';$('welcomeMention').checked=s.welcome.mention!==false;$('goodbyeEnabled').checked=!!s.goodbye.enabled;$('goodbyeChannel').value=s.goodbye.channelId||'';$('goodbyeMessage').value=s.goodbye.message||'Goodbye {user}! We will miss you.';$('moderationEnabled').checked=s.moderation.enabled;$('antiLink').checked=s.moderation.antiLink;$('antiSpam').checked=!!s.moderation.antiSpam;$('antiMentionSpam').checked=!!s.moderation.antiMentionSpam;$('blockedWords').value=(s.moderation.blockedWords||[]).join('\\n');$('logChannel').value=s.logging.channelId||s.moderation.logChannelId||'';$('loggingEnabled').checked=s.logging.enabled!==false;const logEvents=s.logging.events||{};for(const key of LOG_EVENT_KEYS){const input=$('log_'+key);if(input)input.checked=logEvents[key]!==false;}$('musicEnabled').checked=s.music.enabled;$('musicRequestChannel').value=s.music.requestChannelId||'';$('playDashboardMusic').disabled=!s.music.enabled;$('musicStatus').textContent=s.music.enabled?'':'Music commands are disabled in Music settings.';$('aiEnabled').checked=s.ai.enabled!==false;$('autoroleEnabled').checked=!!s.autorole.enabled;const cf=s.community||{};for(const [key,id] of Object.entries({tickets:'featureTickets',polls:'featurePolls',giveaways:'featureGiveaways',suggestions:'featureSuggestions',verification:'featureVerification',roleButtons:'featureRoleButtons',levels:'featureLevels',economy:'featureEconomy',tempVoice:'featureTempVoice',invites:'featureInvites',streamAlerts:'featureStreamAlerts',customCommands:'featureCustomCommands',backup:'featureBackup'}))$(id).checked=cf[key]!==false;renderCommunityCommands();renderCommunityConfig(s.communityConfig||{});renderReactionRoleList();renderReactionRoleEmojiGallery();$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();updateReactionRoleCount();if(s.welcome.imageUrl){$('previewImage').src=s.welcome.imageUrl+'?v='+Date.now();$('previewImage').classList.remove('hidden')}renderCommands(data.commands);preview();updateWelcomeMode()}catch(e){console.error('Dashboard load failed:',e);if(e.status===401){$('app').classList.add('hidden');$('login').classList.remove('hidden')}else{$('login').classList.add('hidden');$('app').classList.remove('hidden');let notice=$('dashboardLoadError');if(!notice){notice=document.createElement('div');notice.id='dashboardLoadError';notice.className='panel';notice.style.borderColor='#a83e57';$('page-overview').prepend(notice)}notice.textContent='Dashboard data could not be fully loaded: '+(e.message||'Unknown error')}}}
+async function load(){try{data=await api('/api/me');$('login').classList.add('hidden');$('app').classList.remove('hidden');$('serverName').textContent=data.guild.name;$('userName').textContent='Signed in as '+data.user.username;$('memberCount').textContent=data.guild.memberCount||'—';$('channelCount').textContent=data.channels.length;options($('welcomeChannel'),data.channels);options($('musicRequestChannel'),data.channels);options($('reactionRoleChannel'),data.channels);const musicVoiceSelect=$('musicVoiceChannel');musicVoiceSelect.innerHTML='<option value="">Select a voice channel</option>';data.channels.filter(c=>c.type===2).forEach(c=>{const option=document.createElement('option');option.value=c.id;option.textContent='🔊 '+c.name;musicVoiceSelect.appendChild(option)});const libraryVoiceSelect=$('musicLibraryVoiceChannel');libraryVoiceSelect.innerHTML='<option value="">Select a voice channel</option>';data.channels.filter(c=>c.type===2).forEach(c=>{const option=document.createElement('option');option.value=c.id;option.textContent='🔊 '+c.name;libraryVoiceSelect.appendChild(option)});await loadMusicLibrary();await loadMusicFallbackPreview();await refreshDashboardPlayer();if(musicPlayerRefresh)clearInterval(musicPlayerRefresh);musicPlayerRefresh=setInterval(refreshDashboardPlayer,3000);options($('goodbyeChannel'),data.channels);options($('logChannel'),data.channels);options($('actionChannel'),data.channels);const autoroleRolesRoot=$('autoroleRolesList');autoroleRolesRoot.replaceChildren();const s=data.settings;const selectedAutoroleIds=new Set((s.autorole.roleIds|| (s.autorole.roleId?[s.autorole.roleId]:[])).map(String));for(const role of data.roles){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=role.id;input.checked=selectedAutoroleIds.has(role.id);input.dataset.autoroleRole='true';const name=document.createElement('span');name.textContent=role.name;label.append(input,name);autoroleRolesRoot.appendChild(label)}$('musicArtworkMode').value=s.music.artworkMode==='force'?'force':'missing';const botActivity=s.activity||{status:'online',type:'none',text:'',url:''};$('botPresenceStatus').value=botActivity.status||'online';$('botActivityType').value=botActivity.type||'none';$('botActivityText').value=botActivity.text||'';$('botActivityUrl').value=botActivity.url||'';updateBotActivityFields();$('welcomeEnabled').checked=s.welcome.enabled;$('welcomeChannel').value=s.welcome.channelId;$('welcomeMessage').value=s.welcome.message;$('welcomeType').value=s.welcome.type||'text';$('welcomeMention').checked=s.welcome.mention!==false;$('goodbyeEnabled').checked=!!s.goodbye.enabled;$('goodbyeChannel').value=s.goodbye.channelId||'';$('goodbyeMessage').value=s.goodbye.message||'Goodbye {user}! We will miss you.';$('moderationEnabled').checked=s.moderation.enabled;$('antiLink').checked=s.moderation.antiLink;$('antiSpam').checked=!!s.moderation.antiSpam;$('antiMentionSpam').checked=!!s.moderation.antiMentionSpam;$('blockedWords').value=(s.moderation.blockedWords||[]).join('\\n');$('logChannel').value=s.logging.channelId||s.moderation.logChannelId||'';$('loggingEnabled').checked=s.logging.enabled!==false;const logEvents=s.logging.events||{};for(const key of LOG_EVENT_KEYS){const input=$('log_'+key);if(input)input.checked=logEvents[key]!==false;}$('musicEnabled').checked=s.music.enabled;$('musicRequestChannel').value=s.music.requestChannelId||'';$('playDashboardMusic').disabled=!s.music.enabled;$('musicStatus').textContent=s.music.enabled?'':'Music commands are disabled in Music settings.';$('aiEnabled').checked=s.ai.enabled!==false;$('autoroleEnabled').checked=!!s.autorole.enabled;const cf=s.community||{};for(const [key,id] of Object.entries({tickets:'featureTickets',polls:'featurePolls',giveaways:'featureGiveaways',suggestions:'featureSuggestions',verification:'featureVerification',roleButtons:'featureRoleButtons',levels:'featureLevels',economy:'featureEconomy',tempVoice:'featureTempVoice',invites:'featureInvites',streamAlerts:'featureStreamAlerts',customCommands:'featureCustomCommands',backup:'featureBackup'}))$(id).checked=cf[key]!==false;renderCommunityCommands();renderCommunityConfig(s.communityConfig||{});renderReactionRoleList();renderReactionRoleEmojiGallery();$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();updateReactionRoleCount();if(s.welcome.imageUrl){$('previewImage').src=s.welcome.imageUrl+'?v='+Date.now();$('previewImage').classList.remove('hidden')}renderCommands(data.commands);preview();updateWelcomeMode()}catch(e){console.error('Dashboard load failed:',e);if(e.status===401){$('app').classList.add('hidden');$('login').classList.remove('hidden')}else{$('login').classList.add('hidden');$('app').classList.remove('hidden');let notice=$('dashboardLoadError');if(!notice){notice=document.createElement('div');notice.id='dashboardLoadError';notice.className='panel';notice.style.borderColor='#a83e57';$('page-overview').prepend(notice)}notice.textContent='Dashboard data could not be fully loaded: '+(e.message||'Unknown error')}}}
 function renderCommands(commands){
   const root=$('commandList');
   root.replaceChildren();
@@ -1091,6 +1121,27 @@ $('saveBackupFeature').onclick=async()=>{const button=$('saveBackupFeature'),sta
 $('saveCommunity').onclick=async()=>{const status=$('communityStatus');status.textContent='Saving…';try{const community={tickets:$('featureTickets').checked,polls:$('featurePolls').checked,giveaways:$('featureGiveaways').checked,suggestions:$('featureSuggestions').checked,verification:$('featureVerification').checked,roleButtons:$('featureRoleButtons').checked,levels:$('featureLevels').checked,economy:$('featureEconomy').checked,tempVoice:$('featureTempVoice').checked,invites:$('featureInvites').checked,streamAlerts:$('featureStreamAlerts').checked,customCommands:$('featureCustomCommands').checked,};await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({community})});status.textContent='Saved. Disabled features are paused.'}catch(e){status.textContent=e.message}};
 $('saveModules').onclick=async()=>{try{const roleIds=[...$('autoroleRolesList').querySelectorAll('[data-autorole-role]:checked')].map(input=>input.value);await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({autorole:{enabled:$('autoroleEnabled').checked,roleIds}})});data.settings.autorole={...data.settings.autorole,enabled:$('autoroleEnabled').checked,roleIds};$('moduleStatus').textContent='Saved.'}catch(e){$('moduleStatus').textContent=e.message}};
 $('saveMusicEnabled').onclick=async()=>{const button=$('saveMusicEnabled'),status=$('musicEnabledStatus');button.disabled=true;status.textContent='Saving…';try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({music:{enabled:$('musicEnabled').checked}})});data.settings.music={...data.settings.music,enabled:$('musicEnabled').checked};$('playDashboardMusic').disabled=!$('musicEnabled').checked;$('musicStatus').textContent=$('musicEnabled').checked?'':'Music commands are disabled in Music settings.';status.textContent=$('musicEnabled').checked?'Music commands enabled.':'Music commands disabled.'}catch(e){status.textContent=e.message||'Could not save music settings.'}finally{button.disabled=false}};
+async function saveBotActivitySettings(){
+  const button=$('saveBotActivity'),status=$('botActivityStatus');
+  const type=$('botActivityType').value;
+  const text=$('botActivityText').value.trim();
+  const url=$('botActivityUrl').value.trim();
+  if(type!=='none'&&!text){status.textContent='Enter activity text first.';$('botActivityText').focus();return}
+  if(type==='streaming'&&!url){status.textContent='Enter a Twitch or YouTube link for Streaming.';$('botActivityUrl').focus();return}
+  button.disabled=true;status.textContent='Applying activity…';
+  try{
+    const activity={status:$('botPresenceStatus').value,type,text:type==='none'?'':text,url:type==='streaming'?url:''};
+    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({activity})});
+    data.settings.activity=activity;
+    status.textContent='Bot status and activity updated.';
+  }catch(e){status.textContent=e.message||'Could not update bot activity.'}
+  finally{button.disabled=false}
+}
+$('saveBotActivity').onclick=saveBotActivitySettings;
+$('clearBotActivity').onclick=()=>{
+  $('botActivityType').value='none';$('botActivityText').value='';$('botActivityUrl').value='';
+  updateBotActivityFields();saveBotActivitySettings();
+};
 $('saveAISettings').onclick=async()=>{const button=$('saveAISettings'),status=$('aiStatus');button.disabled=true;status.textContent='Saving…';try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({ai:{enabled:$('aiEnabled').checked}})});data.settings.ai={...data.settings.ai,enabled:$('aiEnabled').checked};status.textContent=$('aiEnabled').checked?'AI replies enabled.':'AI replies disabled.'}catch(e){status.textContent=e.message||'Could not save AI settings.'}finally{button.disabled=false}};
 $('saveMusicRequestChannel').onclick=async()=>{const status=$('musicRequestChannelStatus');status.textContent='Saving…';try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({music:{requestChannelId:$('musicRequestChannel').value}})});status.textContent=$('musicRequestChannel').value?'Request channel saved.':'Automatic music requests disabled.'}catch(e){status.textContent=e.message}};
 $('runAction').onclick=async()=>{const status=$('actionStatus');status.textContent='Working…';try{const result=await api('/api/admin-command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:$('adminAction').value,userId:$('targetUser').value,amount:Number($('actionAmount').value)||0,channelId:$('actionChannel').value,reason:$('actionReason').value})});status.textContent=result.message||'Command completed.'}catch(e){status.textContent=e.message}};
@@ -1104,6 +1155,59 @@ $('restoreServerBackup').onclick=async()=>{const status=$('serverRestoreStatus')
 load();
 </script></body></html>`;
 }
+
+function normalizeBotActivity(input, current = defaults.activity) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid activity settings.');
+  const allowedStatuses = ['online', 'idle', 'dnd', 'invisible'];
+  const allowedTypes = ['none', 'playing', 'watching', 'listening', 'competing', 'streaming'];
+  const status = String(input.status ?? current.status ?? 'online').toLowerCase();
+  const type = String(input.type ?? current.type ?? 'none').toLowerCase();
+  const text = String(input.text ?? current.text ?? '').trim();
+  const url = String(input.url ?? current.url ?? '').trim();
+  if (!allowedStatuses.includes(status)) throw new Error('Choose a valid online status.');
+  if (!allowedTypes.includes(type)) throw new Error('Choose a valid activity type.');
+  if (text.length > 128) throw new Error('Activity text must be 128 characters or fewer.');
+  if (type !== 'none' && !text) throw new Error('Enter activity text first.');
+  if (type === 'streaming') {
+    let parsed;
+    try { parsed = new URL(url); } catch { throw new Error('Enter a valid Twitch or YouTube streaming link.'); }
+    const host = parsed.hostname.toLowerCase();
+    const supportedHost = host === 'twitch.tv' || host.endsWith('.twitch.tv') ||
+      host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be';
+    if (parsed.protocol !== 'https:' || !supportedHost) throw new Error('Streaming links must use HTTPS and point to Twitch or YouTube.');
+  }
+  return { status, type, text: type === 'none' ? '' : text, url: type === 'streaming' ? url : '' };
+}
+function applyBotPresence(client, config) {
+  if (!client?.user?.setPresence) throw new Error('The Discord bot is not ready yet.');
+  const activity = normalizeBotActivity(config || defaults.activity, defaults.activity);
+  const typeMap = {
+    playing: ActivityType.Playing,
+    watching: ActivityType.Watching,
+    listening: ActivityType.Listening,
+    competing: ActivityType.Competing,
+    streaming: ActivityType.Streaming,
+  };
+  const activities = [];
+  if (activity.type !== 'none' && activity.text) {
+    const item = { name: activity.text, type: typeMap[activity.type] };
+    if (activity.type === 'streaming') item.url = activity.url;
+    activities.push(item);
+  }
+  client.user.setPresence({ status: activity.status, activities });
+  return activity;
+}
+function applySavedBotPresence(client) {
+  return applyBotPresence(client, settings.activity);
+}
+function setBotActivity(client, partial) {
+  const next = normalizeBotActivity(partial, settings.activity);
+  applyBotPresence(client, next);
+  settings.activity = next;
+  saveSettings();
+  return next;
+}
+
 function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, sendWelcomeTest) {
   if (!CLIENT_ID || !CLIENT_SECRET || !SESSION_SECRET || !REDIRECT_URI) {
     console.warn('Dashboard is disabled: configure DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_SESSION_SECRET and DASHBOARD_REDIRECT_URI.');
@@ -1802,6 +1906,14 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
             for (const id of body.autorole.roleIds) { const role = liveRoles.get(id); if (!role || role.managed || role.id === liveGuild.id) return send(res, 400, { error: 'Managed or @everyone roles cannot be assigned automatically.' }); }
           }
           if (!validChannel(body.welcome && body.welcome.channelId) || !validChannel(body.goodbye && body.goodbye.channelId) || !validChannel(body.moderation && body.moderation.logChannelId) || !validChannel(body.logging && body.logging.channelId) || !validChannel(body.music && body.music.requestChannelId)) return send(res, 400, { error: 'Invalid channel' });
+          if (body.activity !== undefined) {
+            try {
+              body.activity = normalizeBotActivity(body.activity, settings.activity);
+              applyBotPresence(client, body.activity);
+            } catch (error) {
+              return send(res, 400, { error: error.message || 'Invalid bot activity settings.' });
+            }
+          }
           settings = merge(settings, body);
           if (settings.welcome.type === 'image' && !settings.welcome.imagePath) return send(res, 400, { error: 'Upload a welcome image before selecting image mode.' });
           settings.welcome.message = String(settings.welcome.message || defaults.welcome.message).slice(0, 500);
@@ -1883,4 +1995,4 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
 function getDashboardSettings(guildId) {
   return guildId === GUILD_ID ? settings : defaults;
 }
-module.exports = { startDashboard, getDashboardSettings };
+module.exports = { startDashboard, getDashboardSettings, applySavedBotPresence, setBotActivity };
