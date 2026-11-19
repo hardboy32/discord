@@ -417,9 +417,15 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 #page-reaction-roles .rr-tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px}
 #page-reaction-roles .rr-tools button{padding:8px 11px}
 #page-reaction-roles .rr-list{display:grid;gap:5px;max-height:220px;overflow:auto}
-#page-reaction-roles .rr-list .command{padding:8px 10px;gap:8px;align-items:center}
-#page-reaction-roles .rr-list .command p{font-size:12px;margin:2px 0;overflow-wrap:anywhere}
-#page-reaction-roles .rr-list .command button{padding:6px 9px;white-space:nowrap}
+#page-reaction-roles .rr-list .rr-config{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 9px;background:#111b30;border:1px solid var(--line);border-radius:9px}
+#page-reaction-roles .rr-list .rr-config-main{flex:1;min-width:0}
+#page-reaction-roles .rr-list .rr-config-head{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}
+#page-reaction-roles .rr-list .rr-config-head strong{font-size:13px;white-space:nowrap}
+#page-reaction-roles .rr-list .rr-config-meta{font-size:11px;color:var(--muted)}
+#page-reaction-roles .rr-list details{margin-top:2px;font-size:11px;color:var(--muted)}
+#page-reaction-roles .rr-list summary{cursor:pointer;display:inline-block}
+#page-reaction-roles .rr-list .rr-config-detail{overflow-wrap:anywhere;padding:4px 0}
+#page-reaction-roles .rr-list .rr-config button{padding:5px 8px;font-size:11px;white-space:nowrap;flex:0 0 auto}
 #page-reaction-roles .rr-help{font-size:12px;margin:6px 0;color:var(--muted)}
 @media(max-width:650px){#page-reaction-roles .rr-builder{grid-template-columns:1fr}#page-reaction-roles .rr-mappings{grid-template-columns:1fr;max-height:260px}}
 
@@ -634,10 +640,19 @@ function renderReactionRoleList(){
   for(const item of configs){const key=item.messageId;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
   if(!groups.size){root.textContent='No reaction-role messages configured.';return}
   for(const [messageId,items] of groups){
-    const row=document.createElement('div');row.className='command';
-    const info=document.createElement('div');const title=document.createElement('strong');title.textContent='#'+(data.channels.find(c=>c.id===items[0].channelId)?.name||items[0].channelId);
-    const detail=document.createElement('p');detail.textContent=items.map(x=>x.emoji+' → '+(data.roles.find(r=>r.id===x.roleId)?.name||'Deleted role')).join('  ·  ')+' | Message ID: '+messageId;
-    info.append(title,detail);const remove=document.createElement('button');remove.className='danger';remove.textContent='Remove setup';remove.onclick=async()=>{if(!confirm('Stop managing reaction roles for this message?'))return;try{await api('/api/reaction-roles/'+encodeURIComponent(messageId),{method:'DELETE'});data.settings.reactionRoles=data.settings.reactionRoles.filter(x=>x.messageId!==messageId);renderReactionRoleList()}catch(e){alert(e.message)}};row.append(info,remove);root.appendChild(row);
+    const row=document.createElement('div');row.className='rr-config';
+    const info=document.createElement('div');info.className='rr-config-main';
+    const head=document.createElement('div');head.className='rr-config-head';
+    const title=document.createElement('strong');title.textContent='#'+(data.channels.find(c=>c.id===items[0].channelId)?.name||items[0].channelId);
+    const count=document.createElement('span');count.className='tag';count.textContent=items.length+' roles';
+    head.append(title,count);
+    const details=document.createElement('details');
+    const summary=document.createElement('summary');summary.textContent='View details';
+    const detail=document.createElement('div');detail.className='rr-config-detail';
+    detail.textContent=items.map(x=>x.emoji+' → '+(data.roles.find(r=>r.id===x.roleId)?.name||'Deleted role')).join('  ·  ')+' | Message ID: '+messageId;
+    details.append(summary,detail);info.append(head,details);
+    const remove=document.createElement('button');remove.className='danger';remove.textContent='Remove';remove.title='Remove setup';remove.onclick=async()=>{if(!confirm('Stop managing reaction roles for this message?'))return;try{await api('/api/reaction-roles/'+encodeURIComponent(messageId),{method:'DELETE'});data.settings.reactionRoles=data.settings.reactionRoles.filter(x=>x.messageId!==messageId);renderReactionRoleList()}catch(e){alert(e.message)}};
+    row.append(info,remove);root.appendChild(row);
   }
 }
 $('addReactionRoleMapping').onclick=()=>addReactionRoleMappingRow();
