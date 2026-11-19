@@ -69,7 +69,7 @@ AI replies use the member's language, maintain a short in-memory conversation hi
 
 ### Web dashboard
 
-The dashboard is served by the same Node.js process at the Railway public domain. It includes Overview, Welcome, Music, Commands, Moderation, Server Logs, Automatic Roles, AI, Community, XP Management, Reaction Roles, and Data Backup pages. Music playback and server-wide music options are grouped together; moderation actions and server event logs have separate pages. Changes are saved to `/app/data/dashboard-settings.json` and are applied by the bot. The dashboard is restricted to the configured server; only its owner or members with Manage Server / Administrator can sign in.
+The dashboard is served by the same Node.js process at the Railway public domain. It includes Overview, Welcome, Music, Commands, Moderation, Server Logs, Automatic Roles, AI, Activity, Community, XP Management, Reaction Roles, and Data Backup pages. Music playback and server-wide music options are grouped together; moderation actions and server event logs have separate pages. The Activity page controls the bot's global online status and profile activity (Playing, Watching, Listening, Competing, or a linked Streaming activity). These settings are saved to `/app/data/dashboard-settings.json`, applied immediately, and restored after a restart. The Streaming presence does not broadcast video or share a screen. The dashboard is restricted to the configured server; only its owner or members with Manage Server / Administrator can sign in.
 
 To enable it:
 1. In Discord Developer Portal, open your application **OAuth2** page and copy the Client Secret.
