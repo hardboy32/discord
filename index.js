@@ -1678,9 +1678,17 @@ async function generateCloudflareImage(prompt) {
   let imageBuffer;
   if (contentType.includes('application/json')) {
     const payload = await response.json();
-    const encodedImage = payload && payload.result && payload.result.image
-      ? payload.result.image
-      : payload && payload.image;
+    if (payload && payload.success === false) {
+      const detail = Array.isArray(payload.errors) && payload.errors[0] && payload.errors[0].message
+        ? payload.errors[0].message
+        : 'The image model reported an error.';
+      throw new Error('Cloudflare image generation failed: ' + detail);
+    }
+    const encodedImage = payload && typeof payload.result === 'string'
+      ? payload.result
+      : payload && payload.result && typeof payload.result.image === 'string'
+        ? payload.result.image
+        : payload && payload.image;
     if (typeof encodedImage !== 'string' || !encodedImage.trim()) {
       throw new Error('Cloudflare returned a response without an image.');
     }
