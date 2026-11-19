@@ -657,38 +657,86 @@ function restoreReactionRoleEditorSelection(){
   else{const range=document.createRange();range.selectNodeContents(field);range.collapse(false);sel.removeAllRanges();sel.addRange(range);rrEditorSavedRange=range.cloneRange()}
   return sel.getRangeAt(0);
 }
+function appendReactionRoleInline(parent,value){
+  const tick=String.fromCharCode(96);
+  const pattern=new RegExp('(<a?:[A-Za-z0-9_]{2,32}:\\\\d{17,20}>|\\\\*\\\\*[^*]+\\\\*\\\\*|__[^_]+__|~~[^~]+~~|\\\\|\\\\|[^|]+\\\\|\\\\||\\\\*[^*]+\\\\*|'+tick+'[^'+tick+']+'+tick+'|\\\\[[^\\\\]]+\\\\]\\\\(https?:\\\\/\\\\/[^\\\\s)]+\\\\))','g');
+  let cursor=0,match;
+  while((match=pattern.exec(value))){
+    if(match.index>cursor)parent.appendChild(document.createTextNode(value.slice(cursor,match.index)));
+    const token=match[0];
+    if(token.startsWith('<')){
+      const parsed=/^<a?:([^:]+):(\\d{17,20})>$/.exec(token),emoji=parsed&&(data.emojis||[]).find(item=>item.id===parsed[2]);
+      const img=document.createElement('img');img.className='rr-inline-emoji';img.contentEditable='false';img.dataset.discordEmoji=token;img.alt=parsed?':'+parsed[1]+':':token;img.title=img.alt;
+      if(emoji)img.src='https://cdn.discordapp.com/emojis/'+encodeURIComponent(emoji.id)+'.'+(emoji.animated?'gif':'png')+'?size=64&quality=lossless';
+      parent.appendChild(img);
+    }else if(token.startsWith('[')){
+      const link=/^\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)$/.exec(token);
+      if(link){const anchor=document.createElement('a');anchor.href=link[2];anchor.rel='noopener noreferrer';anchor.textContent=link[1];parent.appendChild(anchor)}else parent.appendChild(document.createTextNode(token));
+    }else{
+      let tag='span',format='',content=token;
+      if(token.startsWith('**')){tag='strong';content=token.slice(2,-2)}
+      else if(token.startsWith('__')){tag='u';content=token.slice(2,-2)}
+      else if(token.startsWith('~~')){tag='s';content=token.slice(2,-2)}
+      else if(token.startsWith('||')){format='spoiler';content=token.slice(2,-2)}
+      else if(token.startsWith('*')){tag='em';content=token.slice(1,-1)}
+      else if(token.startsWith(tick)){format='code';content=token.slice(1,-1)}
+      const element=document.createElement(tag);if(format)element.dataset.mdFormat=format;element.textContent=content;parent.appendChild(element);
+    }
+    cursor=pattern.lastIndex;
+  }
+  if(cursor<value.length)parent.appendChild(document.createTextNode(value.slice(cursor)));
+}
 function renderReactionRoleMarkdown(value){
   const root=$('reactionRoleContent');root.replaceChildren();
-  const lines=String(value||'').replace(/\\r\\n?/g,'\\n').split('\\n');
-  for(const lineText of lines){
-    const line=document.createElement('div');
-    if(!lineText){line.appendChild(document.createElement('br'));root.appendChild(line);continue}
-    const pattern=/(<a?:[A-Za-z0-9_]{2,32}:\\d{17,20}>|\\*\\*[^*]+\\*\\*|__[^_]+__|~~[^~]+~~|\\|\\|[^|]+\\|\\||\\*[^*]+\\*)/g;
-    let cursor=0,match;
-    while((match=pattern.exec(lineText))){
-      if(match.index>cursor)line.appendChild(document.createTextNode(lineText.slice(cursor,match.index)));
-      const token=match[0];
-      if(token.startsWith('<')){
-        const parsed=/^<a?:([^:]+):(\\d{17,20})>$/.exec(token),emoji=parsed&&(data.emojis||[]).find(item=>item.id===parsed[2]);
-        const img=document.createElement('img');img.className='rr-inline-emoji';img.contentEditable='false';img.dataset.discordEmoji=token;img.alt=parsed?':'+parsed[1]+':':token;img.title=img.alt;
-        if(emoji)img.src='https://cdn.discordapp.com/emojis/'+encodeURIComponent(emoji.id)+'.'+(emoji.animated?'gif':'png')+'?size=64&quality=lossless';
-        line.appendChild(img);
-      }else{
-        let tag='span',format='',content=token;
-        if(token.startsWith('**')){tag='strong';content=token.slice(2,-2)}
-        else if(token.startsWith('__')){tag='u';content=token.slice(2,-2)}
-        else if(token.startsWith('~~')){tag='s';content=token.slice(2,-2)}
-        else if(token.startsWith('||')){format='spoiler';content=token.slice(2,-2)}
-        else if(token.startsWith('*')){tag='em';content=token.slice(1,-1)}
-        else if(token.startsWith(String.fromCharCode(96))){format='code';content=token.slice(1,-1)}
-        const element=document.createElement(tag);if(format)element.dataset.mdFormat=format;element.textContent=content;line.appendChild(element);
-      }
-      cursor=pattern.lastIndex;
+  const lines=String(value||'').replace(/\\r\\n?/g,'\\n').split('\\n'),fence=String.fromCharCode(96).repeat(3);
+  for(let i=0;i<lines.length;){
+    if(lines[i].startsWith(fence)){
+      const code=[];i++;while(i<lines.length&&!lines[i].startsWith(fence))code.push(lines[i++]);if(i<lines.length)i++;
+      const pre=document.createElement('pre');pre.textContent=code.join('\\\\n');root.appendChild(pre);continue;
     }
-    if(cursor<lineText.length)line.appendChild(document.createTextNode(lineText.slice(cursor)));
-    root.appendChild(line);
+    if(/^\\s*>\\s?/.test(lines[i])){
+      const quote=document.createElement('blockquote');
+      while(i<lines.length&&/^\\s*>\\s?/.test(lines[i])){const line=document.createElement('div');appendReactionRoleInline(line,lines[i].replace(/^\\s*>\\s?/,''));quote.appendChild(line);i++}
+      root.appendChild(quote);continue;
+    }
+    const unordered=/^\\s*[-*]\\s+/.test(lines[i]),ordered=/^\\s*\\d+[.)]\\s+/.test(lines[i]);
+    if(unordered||ordered){
+      const list=document.createElement(unordered?'ul':'ol');
+      while(i<lines.length){
+        const match=unordered?/^\\s*[-*]\\s+(.*)$/.exec(lines[i]):/^\\s*\\d+[.)]\\s+(.*)$/.exec(lines[i]);
+        if(!match)break;const li=document.createElement('li');appendReactionRoleInline(li,match[1]);list.appendChild(li);i++;
+      }
+      root.appendChild(list);continue;
+    }
+    const line=document.createElement('div');
+    if(lines[i])appendReactionRoleInline(line,lines[i]);else line.appendChild(document.createElement('br'));
+    root.appendChild(line);i++;
   }
   rrEditorSavedRange=null;
+}
+function reactionRoleMessageText(){
+  const root=$('reactionRoleContent'),tick=String.fromCharCode(96);
+  const blockTags=new Set(['DIV','P','UL','OL','PRE','BLOCKQUOTE']);
+  function children(node){
+    const nodes=[...node.childNodes];let result='';
+    nodes.forEach((child,index)=>{if(index&&(blockTags.has(child.nodeName)||blockTags.has(nodes[index-1].nodeName)))result+='\\\\n';result+=read(child)});
+    return result;
+  }
+  function read(node){
+    if(node.nodeType===3)return node.nodeValue||'';if(node.nodeType!==1)return '';
+    const tag=node.tagName;if(tag==='IMG')return node.dataset.discordEmoji||node.alt||'';if(tag==='BR')return '\\\\n';
+    const inner=children(node);
+    if(tag==='B'||tag==='STRONG')return '**'+inner+'**';if(tag==='I'||tag==='EM')return '*'+inner+'*';if(tag==='U')return '__'+inner+'__';
+    if(tag==='S'||tag==='STRIKE'||tag==='DEL')return '~~'+inner+'~~';
+    if(node.dataset.mdFormat==='code'||tag==='CODE')return tick+inner+tick;
+    if(node.dataset.mdFormat==='spoiler')return '||'+inner+'||';
+    if(tag==='A'){const href=node.getAttribute('href')||'';return /^https?:\\/\\//i.test(href)?'['+inner+']('+href+')':inner}
+    if(tag==='BLOCKQUOTE')return inner.split('\\\\n').map(line=>'> '+line).join('\\\\n');
+    if(tag==='PRE')return tick.repeat(3)+'\\\\n'+(node.textContent||'').replace(/\\\\n+$/,'')+'\\\\n'+tick.repeat(3);
+    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+children(li)}).join('\\\\n')}
+    return inner;
+  }
+  return children(root).replace(/\\\\n+$/,'');
 }
 function insertReactionRoleTextAtSelection(value){
   const range=restoreReactionRoleEditorSelection(),fragment=document.createDocumentFragment(),parts=String(value).split('\\n');
