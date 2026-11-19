@@ -1540,9 +1540,10 @@ async function requestAIReply(message, prompt) {
   const conversationKey = [message.guildId, message.channelId, message.author.id].join(':');
   const now = Date.now();
   const MAX_HISTORY_AGE_MS = 90 * 60 * 1000;
-  const MAX_HISTORY_MESSAGES = 16;
-  const MAX_HISTORY_CHARS = 9000;
-  const MAX_USER_PROMPT_CHARS = 5000;
+  // Cloudflare chat is tuned for low latency: send less old context and keep replies compact.
+  const MAX_HISTORY_MESSAGES = provider === 'cloudflare' ? 6 : 16;
+  const MAX_HISTORY_CHARS = provider === 'cloudflare' ? 3000 : 9000;
+  const MAX_USER_PROMPT_CHARS = provider === 'cloudflare' ? 3500 : 5000;
 
   // Keep each conversation isolated by server, channel and Discord user.
   // Expired conversations are discarded instead of leaking stale context.
@@ -1602,10 +1603,12 @@ async function requestAIReply(message, prompt) {
       model: providerConfig.model,
       messages,
       temperature: 0.55,
-      max_tokens: 700,
+      // A smaller output ceiling reduces generation time for normal Discord chat.
+      max_tokens: provider === 'cloudflare' ? 500 : 700,
       ...(provider === 'cloudflare' ? { options: { rejectIfBusy: true } } : {}),
     }),
-    signal: AbortSignal.timeout(provider === 'cloudflare' ? 15000 : 45000),
+    // Fail quickly instead of leaving Discord members waiting on a stalled request.
+    signal: AbortSignal.timeout(provider === 'cloudflare' ? 12000 : 45000),
   });
 
   if (!response.ok) {
