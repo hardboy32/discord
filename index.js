@@ -1869,7 +1869,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome));
   startMusicRequestCleanupScheduler(readyClient);
-  logDebug(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
+  logDebug(GEMINI_API_KEY ? 'AI chat is enabled via Gemini model ' + GEMINI_MODEL + '.' : 'AI chat is disabled: set GEMINI_API_KEY in Railway Variables.');
   applySavedBotPresence(readyClient);
   logDebug('Saved bot status and activity restored.');
   try {
