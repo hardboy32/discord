@@ -653,7 +653,7 @@ function reactionRoleMessageText(){
     if(node.nodeType!==1)return '';
     const tag=node.tagName;
     if(tag==='IMG')return node.dataset.discordEmoji||node.alt||'';
-    if(tag==='BR')return '\n';
+    if(tag==='BR')return '\\n';
     const inner=[...node.childNodes].map(read).join('');
     if(tag==='B'||tag==='STRONG')return '**'+inner+'**';
     if(tag==='I'||tag==='EM')return '*'+inner+'*';
@@ -662,13 +662,13 @@ function reactionRoleMessageText(){
     if(node.dataset.mdFormat==='code')return tick+inner+tick;
     if(node.dataset.mdFormat==='spoiler')return '||'+inner+'||';
     if(tag==='A')return '['+inner+']('+node.getAttribute('href')+')';
-    if(tag==='BLOCKQUOTE')return inner.split('\n').map(line=>line?'> '+line:line).join('\n');
-    if(tag==='PRE')return tick+tick+tick+'\n'+inner.replace(/\n+$/,'')+'\n'+tick+tick+tick;
-    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+[...li.childNodes].map(read).join('')}).join('\n')}
-    if((tag==='DIV'||tag==='P')&&node.nextSibling)return inner+'\n';
+    if(tag==='BLOCKQUOTE')return inner.split('\\n').map(line=>line?'> '+line:line).join('\\n');
+    if(tag==='PRE')return tick+tick+tick+'\\n'+inner.replace(/\\n+$/,'')+'\\n'+tick+tick+tick;
+    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+[...li.childNodes].map(read).join('')}).join('\\n')}
+    if((tag==='DIV'||tag==='P')&&node.nextSibling)return inner+'\\n';
     return inner;
   }
-  return [...root.childNodes].map(read).join('').replace(/\n+$/,'');
+  return [...root.childNodes].map(read).join('').replace(/\\n+$/,'');
 }
 let rrEditorSavedRange=null;
 function saveReactionRoleEditorSelection(){const field=$('reactionRoleContent'),sel=window.getSelection();if(sel&&sel.rangeCount&&field.contains(sel.getRangeAt(0).commonAncestorContainer))rrEditorSavedRange=sel.getRangeAt(0).cloneRange()}
@@ -681,8 +681,8 @@ function wrapReactionRoleSelection(kind){
 }
 function prefixReactionRoleLines(kind){
   restoreReactionRoleEditorSelection();const sel=window.getSelection();if(!sel||!sel.rangeCount)return;
-  let prefix=kind==='quote'?'> ':kind==='codeblock'?String.fromCharCode(96).repeat(3)+'\n':'- ';
-  const value=(sel.toString()||'text').split('\n').map(line=>prefix+line).join('\n');
+  let prefix=kind==='quote'?'> ':kind==='codeblock'?String.fromCharCode(96).repeat(3)+'\\n':'- ';
+  const value=(sel.toString()||'text').split('\\n').map(line=>prefix+line).join('\\n');
   document.execCommand('insertText',false,value);saveReactionRoleEditorSelection();
 }
 document.querySelectorAll('[data-rr-command]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>{restoreReactionRoleEditorSelection();document.execCommand(button.dataset.rrCommand,false,null);saveReactionRoleEditorSelection()})});
