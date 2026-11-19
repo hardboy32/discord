@@ -565,7 +565,10 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <p class="hint">Disabling a feature pauses its commands and interactions; saved data is retained. The bot needs the relevant Discord permissions and the Railway Volume must remain mounted at /app/data.</p></div>
 <div class="panel"><h2>Advanced module configuration</h2><p class="muted">Configure the behavior of every community module here. These settings are saved on the Railway Volume and are read by the bot.</p><div id="communityConfigGrid" class="grid"></div><div class="actions"><button id="saveCommunityConfig">Save all advanced settings</button><span id="communityConfigStatus"></span></div><p class="hint">Some actions that publish Discord messages (for example creating a ticket or verification panel) remain explicit actions; these settings control their defaults and runtime behavior.</p></div>
 </section>
-<section id="page-xp" class="page hidden"><div class="panel"><h2>XP management</h2><p class="muted">Search for a server member, check their current XP, then add or remove points manually.</p><div class="actions"><button id="xpLoadAllButton" class="secondary" type="button">Load all server members</button><span id="xpLoadAllStatus" role="status"></span></div><div class="formrow"><label class="field">Search member by username or display name<input id="xpMemberQuery" maxlength="80" placeholder="Type a member name"></label><div class="field" style="justify-content:end"><span>&nbsp;</span><button id="xpSearchButton" class="secondary">Search members</button></div></div><label class="field">Select member<select id="xpMemberSelect"><option value="">Load the member list or search first</option></select></label><div class="formrow"><label class="field">XP amount<input id="xpAmount" type="number" min="1" max="1000000" value="100"></label><label class="field">Reason (optional)<input id="xpReason" maxlength="180" placeholder="Manual adjustment"></label></div><div class="actions"><button id="xpAddButton">Add XP</button><button id="xpRemoveButton" class="danger">Remove XP</button><span id="xpStatus" role="status"></span></div><p class="hint" id="xpCurrentValue">Choose a member to view their current XP.</p></div></section><section id="page-backup" class="page hidden"><div class="panel"><h2>Complete bot data backup</h2><p class="muted">Download a single JSON archive containing the bot's persistent text data and configuration files from the Railway Volume.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>/app/data</b></div><div class="stat"><span class="muted">Security</span><b>Admin only</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files found in the data folder. Binary files such as welcome images and secrets/tokens are not included. Keep the downloaded backup somewhere safe.</p><div class="actions"><button id="downloadDataBackup">Download complete data backup</button><span id="backupStatus"></span></div><hr style="border-color:var(--line);margin:22px 0"><h2>Restore from backup</h2><p class="muted">Upload a backup JSON previously downloaded from this dashboard. Matching files will be replaced by the backup contents.</p><label class="field">Backup file (.json)<input id="restoreBackupFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="restoreDataBackup" class="danger">Restore selected backup</button><span id="restoreStatus"></span></div><p class="hint">Restore only accepts this bot’s backup format and the same Discord server. It replaces matching text files; it does not restore images, secrets, Discord messages, roles, or channels. Do not close this page while the restore is running.</p></div></section>
+<section id="page-xp" class="page hidden"><div class="panel"><h2>XP management</h2><p class="muted">Search for a server member, check their current XP, then add or remove points manually.</p><div class="actions"><button id="xpLoadAllButton" class="secondary" type="button">Load all server members</button><span id="xpLoadAllStatus" role="status"></span></div><div class="formrow"><label class="field">Search member by username or display name<input id="xpMemberQuery" maxlength="80" placeholder="Type a member name"></label><div class="field" style="justify-content:end"><span>&nbsp;</span><button id="xpSearchButton" class="secondary">Search members</button></div></div><label class="field">Select member<select id="xpMemberSelect"><option value="">Load the member list or search first</option></select></label><div class="formrow"><label class="field">XP amount<input id="xpAmount" type="number" min="1" max="1000000" value="100"></label><label class="field">Reason (optional)<input id="xpReason" maxlength="180" placeholder="Manual adjustment"></label></div><div class="actions"><button id="xpAddButton">Add XP</button><button id="xpRemoveButton" class="danger">Remove XP</button><span id="xpStatus" role="status"></span></div><p class="hint" id="xpCurrentValue">Choose a member to view their current XP.</p></div></section><section id="page-backup" class="page hidden">
+<div class="panel"><h2>Bot data backup</h2><p class="muted">Back up the bot's persistent text data and configuration files stored on Railway.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>Railway Volume</b></div><div class="stat"><span class="muted">Security</span><b>Server managers</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files. This is not a full disk image: uploaded welcome/music artwork, audio-library files, secrets and hidden files are excluded. Individual files over 2 MB and archives over 12 MB are skipped.</p><div class="actions"><button id="downloadDataBackup">Download bot data backup</button><span id="backupStatus" role="status"></span></div><hr style="border-color:var(--line);margin:22px 0"><h2>Restore bot data</h2><p class="muted">Upload a JSON backup created by this dashboard. Matching files will be replaced; files absent from the backup are left untouched.</p><label class="field">Backup file (.json)<input id="restoreBackupFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="restoreDataBackup" class="danger">Restore bot data</button><span id="restoreStatus" role="status"></span></div><p class="hint">Only backups for this Discord server are accepted. Secrets, images, audio, Discord messages, roles and channels are not restored here.</p></div>
+<div class="panel"><h2>Discord server structure backup</h2><p class="muted">Save the server layout separately from bot data. This includes roles, permissions, categories, channels, channel settings and permission overwrites.</p><div class="stats"><div class="stat"><span class="muted">Roles</span><b>Names & permissions</b></div><div class="stat"><span class="muted">Channels</span><b>Categories & order</b></div><div class="stat"><span class="muted">Access</span><b>Role/member overwrites</b></div></div><div class="actions"><button id="downloadServerBackup">Download server backup</button><span id="serverBackupStatus" role="status"></span></div><hr style="border-color:var(--line);margin:22px 0"><h2>Restore server structure</h2><p class="muted">Choose a server structure JSON. First preview the changes, then confirm the restore.</p><label class="field">Server backup file (.json)<input id="restoreServerBackupFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="previewServerBackup" class="secondary">Preview backup</button><button id="restoreServerBackup" class="danger" disabled>Restore server structure</button><span id="serverRestoreStatus" role="status"></span></div><div id="serverBackupPreview" class="hint hidden" style="margin-top:12px"></div><p class="hint">Restore is merge-only: it creates missing roles/channels and updates matching ones. It does not delete extra server items or restore messages, members, bots, integrations, webhooks or server ownership. Administrator permission and Manage Roles/Manage Channels permissions for the bot are required.</p></div>
+</section>
 </main></div><script>
 const LOG_EVENT_KEYS=["memberJoin","memberLeave","memberBan","memberUnban","memberNicknameUpdate","memberRolesUpdate","memberTimeoutUpdate","memberBoost","memberAvatarUpdate","voiceJoin","voiceLeave","voiceMove","voiceMute","voiceDeafen","voiceVideo","voiceStream","voiceStage","messageCreate","messageEdit","messageDelete","messageDeleteBulk","messagePin","messageReactionAdd","messageReactionRemove","messageReactionClear","pollVoteAdd","pollVoteRemove","automod","autoModerationRuleCreate","autoModerationRuleUpdate","autoModerationRuleDelete","auditLogEntry","channelCreate","channelDelete","channelUpdate","threadCreate","threadUpdate","threadDelete","threadMembersUpdate","roleCreate","roleDelete","roleUpdate","guildUpdate","emojiUpdate","stickerUpdate","soundboardCreate","soundboardUpdate","soundboardDelete","inviteCreate","inviteDelete","webhookUpdate","integrationUpdate","scheduledEventCreate","scheduledEventUpdate","scheduledEventDelete","scheduledEventUserAdd","scheduledEventUserRemove","stageInstanceCreate","stageInstanceUpdate","stageInstanceDelete","voiceEffect","typingStart","soundboardBulkUpdate","applicationCommandPermissionsUpdate","presenceUpdate"];
 const $=id=>document.getElementById(id);let data=null;let imageData='';
@@ -678,6 +681,11 @@ $('saveMusicRequestChannel').onclick=async()=>{const status=$('musicRequestChann
 $('runAction').onclick=async()=>{const status=$('actionStatus');status.textContent='Working…';try{const result=await api('/api/admin-command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:$('adminAction').value,userId:$('targetUser').value,amount:Number($('actionAmount').value)||0,channelId:$('actionChannel').value,reason:$('actionReason').value})});status.textContent=result.message||'Command completed.'}catch(e){status.textContent=e.message}};
 $('downloadDataBackup').onclick=()=>{const status=$('backupStatus');status.textContent='Preparing backup…';const link=document.createElement('a');link.href='/api/data-backup';link.download='';document.body.appendChild(link);link.click();link.remove();status.textContent='If the download did not start, sign in again and retry.'};
 $('restoreDataBackup').onclick=async()=>{const file=$('restoreBackupFile').files[0],status=$('restoreStatus');if(!file){status.textContent='Choose a JSON backup file first.';return}if(!confirm('Restore this backup? Matching text files on Railway will be overwritten.'))return;status.textContent='Validating and restoring…';try{const backup=JSON.parse(await file.text());const result=await api('/api/data-restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({backup})});status.textContent='Restore complete: '+result.restored+' files restored. Reloading dashboard…';setTimeout(()=>location.reload(),1200)}catch(e){status.textContent=e.message}};
+$('downloadServerBackup').onclick=()=>{const status=$('serverBackupStatus');status.textContent='Preparing server backup…';const link=document.createElement('a');link.href='/api/server-backup';link.download='';document.body.appendChild(link);link.click();link.remove();status.textContent='If the download did not start, check your dashboard session and bot permissions.'};
+let selectedServerBackup=null,serverBackupPreviewReady=false;
+$('restoreServerBackupFile').addEventListener('change',()=>{selectedServerBackup=null;serverBackupPreviewReady=false;$('restoreServerBackup').disabled=true;$('serverBackupPreview').classList.add('hidden');$('serverRestoreStatus').textContent=''});
+$('previewServerBackup').onclick=async()=>{const file=$('restoreServerBackupFile').files[0],status=$('serverRestoreStatus'),preview=$('serverBackupPreview');if(!file){status.textContent='Choose a server backup JSON first.';return}status.textContent='Checking backup…';try{const backup=JSON.parse(await file.text());const result=await api('/api/server-backup/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({backup})});selectedServerBackup=backup;serverBackupPreviewReady=true;preview.textContent='Backup from '+result.sourceGuildName+' ('+result.sourceGuildId+'). Roles: '+result.roles.create+' to create, '+result.roles.update+' to update. Channels: '+result.channels.create+' to create, '+result.channels.update+' to update. No existing items will be deleted.';preview.classList.remove('hidden');$('restoreServerBackup').disabled=false;status.textContent='Preview ready. Review the summary before restoring.'}catch(e){selectedServerBackup=null;serverBackupPreviewReady=false;$('restoreServerBackup').disabled=true;status.textContent=e.message||'Could not read this backup.'}};
+$('restoreServerBackup').onclick=async()=>{const status=$('serverRestoreStatus');if(!selectedServerBackup||!serverBackupPreviewReady){status.textContent='Preview the backup first.';return}if(!confirm('Restore this server structure? Existing matching roles and channels may be updated. Extra items will NOT be deleted.'))return;$('restoreServerBackup').disabled=true;status.textContent='Restoring roles, channels and permissions…';try{const result=await api('/api/server-backup/restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({backup:selectedServerBackup})});status.textContent='Restore finished. Roles: '+result.rolesCreated+' created, '+result.rolesUpdated+' updated. Channels: '+result.channelsCreated+' created, '+result.channelsUpdated+' updated. Skipped: '+result.skipped+'.'+(result.errors?.length?' Some items need attention: '+result.errors.slice(0,3).join(' | '):'');selectedServerBackup=null;serverBackupPreviewReady=false;$('serverBackupPreview').classList.add('hidden')}catch(e){status.textContent=e.message||'Server restore failed.';$('restoreServerBackup').disabled=false}};
 load();
 </script></body></html>`;
 }
@@ -889,6 +897,179 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           const payload = JSON.stringify(archive, null, 2);
           res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="hardboy-bot-backup-' + new Date().toISOString().slice(0,10) + '.json"', 'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
           return res.end(payload);
+        }
+        if (req.method === 'GET' && url.pathname === '/api/server-backup') {
+          if (!await authorizeManager()) return send(res, 403, { error: 'Administrator or Manage Server permission required.' });
+          const roles = liveGuild.roles.cache
+            .filter(role => role.id !== liveGuild.id && !role.managed)
+            .sort((a, b) => a.position - b.position)
+            .map(role => ({
+              id: role.id, name: role.name, color: role.color, hoist: role.hoist,
+              mentionable: role.mentionable, permissions: role.permissions.bitfield.toString(),
+              position: role.position,
+            }));
+          const channels = liveGuild.channels.cache
+            .filter(channel => !channel.isThread?.() && [0, 2, 4, 5, 13, 15, 16].includes(channel.type))
+            .sort((a, b) => a.rawPosition - b.rawPosition)
+            .map(channel => ({
+              id: channel.id, name: channel.name, type: channel.type,
+              parentId: channel.parentId || null, position: channel.rawPosition,
+              ...(channel.topic !== undefined ? { topic: channel.topic } : {}),
+              ...(channel.nsfw !== undefined ? { nsfw: channel.nsfw } : {}),
+              ...(channel.rateLimitPerUser !== undefined ? { rateLimitPerUser: channel.rateLimitPerUser } : {}),
+              ...(channel.bitrate !== undefined ? { bitrate: channel.bitrate } : {}),
+              ...(channel.userLimit !== undefined ? { userLimit: channel.userLimit } : {}),
+              ...(channel.rtcRegion !== undefined ? { rtcRegion: channel.rtcRegion } : {}),
+              ...(channel.videoQualityMode !== undefined ? { videoQualityMode: channel.videoQualityMode } : {}),
+              ...(channel.defaultAutoArchiveDuration !== undefined ? { defaultAutoArchiveDuration: channel.defaultAutoArchiveDuration } : {}),
+              ...(channel.defaultThreadRateLimitPerUser !== undefined ? { defaultThreadRateLimitPerUser: channel.defaultThreadRateLimitPerUser } : {}),
+              overwrites: channel.permissionOverwrites?.cache?.map(overwrite => ({
+                id: overwrite.id, type: overwrite.type,
+                allow: overwrite.allow.bitfield.toString(), deny: overwrite.deny.bitfield.toString(),
+              })) || [],
+            }));
+          const backup = {
+            format: 'hardboy-discord-server-backup', version: 2,
+            createdAt: new Date().toISOString(),
+            guild: { id: liveGuild.id, name: liveGuild.name },
+            roles, channels,
+          };
+          const payload = JSON.stringify(backup, null, 2);
+          if (Buffer.byteLength(payload) > 12 * 1024 * 1024) return send(res, 413, { error: 'Server backup is too large to download safely.' });
+          res.writeHead(200, {
+            'content-type': 'application/json; charset=utf-8',
+            'content-disposition': 'attachment; filename="discord-server-backup-' + liveGuild.id + '-' + new Date().toISOString().slice(0,10) + '.json"',
+            'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff',
+          });
+          return res.end(payload);
+        }
+        if ((req.method === 'POST' && url.pathname === '/api/server-backup/preview') ||
+            (req.method === 'POST' && url.pathname === '/api/server-backup/restore')) {
+          const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
+          if (!actor || !actor.permissions.has('Administrator')) return send(res, 403, { error: 'Administrator permission is required for server structure restore.' });
+          if (!liveGuild.members.me?.permissions.has('ManageRoles') || !liveGuild.members.me?.permissions.has('ManageChannels')) {
+            return send(res, 403, { error: 'The bot needs Manage Roles and Manage Channels permissions.' });
+          }
+          const body = await readBody(req, 12 * 1024 * 1024);
+          const backup = body.backup;
+          if (!backup || backup.format !== 'hardboy-discord-server-backup' || backup.version !== 2 ||
+              !backup.guild || backup.guild.id !== liveGuild.id ||
+              !Array.isArray(backup.roles) || !Array.isArray(backup.channels) ||
+              backup.roles.length > 250 || backup.channels.length > 500) {
+            return send(res, 400, { error: 'Invalid backup or this backup belongs to a different Discord server.' });
+          }
+          if (backup.roles.some(role => !role || typeof role.id !== 'string' || typeof role.name !== 'string' || !/^\\d+$/.test(String(role.permissions))) ||
+              backup.channels.some(channel => !channel || typeof channel.id !== 'string' || typeof channel.name !== 'string' || ![0,2,4,5,13,15,16].includes(channel.type) || !Array.isArray(channel.overwrites))) {
+            return send(res, 400, { error: 'The backup contains invalid role or channel data.' });
+          }
+          if (url.pathname.endsWith('/preview')) {
+            const roles = { create: 0, update: 0 };
+            for (const role of backup.roles) {
+              const existing = liveGuild.roles.cache.get(role.id) || liveGuild.roles.cache.find(item => !item.managed && item.name === role.name);
+              if (existing) roles.update++; else roles.create++;
+            }
+            const channels = { create: 0, update: 0 };
+            for (const channel of backup.channels) {
+              const existing = liveGuild.channels.cache.get(channel.id) || liveGuild.channels.cache.find(item => !item.isThread?.() && item.type === channel.type && item.name === channel.name);
+              if (existing) channels.update++; else channels.create++;
+            }
+            return send(res, 200, { ok: true, sourceGuildId: backup.guild.id, sourceGuildName: backup.guild.name, roles, channels });
+          }
+
+          const errors = [];
+          let rolesCreated = 0, rolesUpdated = 0, channelsCreated = 0, channelsUpdated = 0, skipped = 0;
+          const roleMap = new Map([[liveGuild.id, liveGuild.id]]);
+          for (const saved of backup.roles) {
+            try {
+              let role = liveGuild.roles.cache.get(saved.id);
+              if (!role || role.managed || role.id === liveGuild.id) role = liveGuild.roles.cache.find(item => !item.managed && item.id !== liveGuild.id && item.name === saved.name);
+              const options = {
+                name: saved.name.slice(0, 100),
+                color: Number.isInteger(saved.color) ? saved.color : 0,
+                hoist: !!saved.hoist, mentionable: !!saved.mentionable,
+                permissions: BigInt(saved.permissions),
+                reason: 'Restore server structure backup',
+              };
+              if (role) {
+                await role.edit(options);
+                rolesUpdated++;
+              } else {
+                role = await liveGuild.roles.create(options);
+                rolesCreated++;
+              }
+              roleMap.set(saved.id, role.id);
+            } catch (error) {
+              skipped++;
+              errors.push('Role "' + saved.name + '": ' + (error.message || 'failed'));
+            }
+          }
+          const categoryType = 4;
+          const savedChannels = [...backup.channels].sort((a, b) => (a.type === categoryType ? 0 : 1) - (b.type === categoryType ? 0 : 1) || (a.position || 0) - (b.position || 0));
+          const channelMap = new Map();
+          for (const saved of savedChannels) {
+            try {
+              let channel = liveGuild.channels.cache.get(saved.id);
+              if (!channel || channel.isThread?.() || channel.type !== saved.type) {
+                channel = liveGuild.channels.cache.find(item => !item.isThread?.() && item.type === saved.type && item.name === saved.name);
+              }
+              const parentId = saved.parentId ? (channelMap.get(saved.parentId) || liveGuild.channels.cache.get(saved.parentId)?.id || null) : null;
+              const overwrites = [];
+              for (const overwrite of saved.overwrites) {
+                let targetId = overwrite.id;
+                if (overwrite.type === 0) {
+                  targetId = roleMap.get(overwrite.id) || (liveGuild.roles.cache.has(overwrite.id) ? overwrite.id : null);
+                } else if (overwrite.type === 1 && !liveGuild.members.cache.has(overwrite.id)) {
+                  const member = await liveGuild.members.fetch(overwrite.id).catch(() => null);
+                  if (!member) targetId = null;
+                }
+                if (!targetId) continue;
+                try {
+                  overwrites.push({ id: targetId, type: overwrite.type, allow: BigInt(overwrite.allow), deny: BigInt(overwrite.deny) });
+                } catch { /* Ignore malformed overwrite entries. */ }
+              }
+              const options = {
+                name: saved.name.slice(0, 100),
+                type: saved.type,
+                ...(parentId && saved.type !== categoryType ? { parent: parentId } : {}),
+                ...(saved.topic !== undefined ? { topic: saved.topic } : {}),
+                ...(saved.nsfw !== undefined ? { nsfw: !!saved.nsfw } : {}),
+                ...(saved.rateLimitPerUser !== undefined ? { rateLimitPerUser: Math.max(0, Math.min(21600, Number(saved.rateLimitPerUser) || 0)) } : {}),
+                ...(saved.bitrate !== undefined ? { bitrate: Math.max(8000, Math.min(liveGuild.maximumBitrate || 96000, Number(saved.bitrate) || 64000)) } : {}),
+                ...(saved.userLimit !== undefined ? { userLimit: Math.max(0, Math.min(99, Number(saved.userLimit) || 0)) } : {}),
+                ...(saved.rtcRegion !== undefined ? { rtcRegion: saved.rtcRegion } : {}),
+                ...(saved.videoQualityMode !== undefined ? { videoQualityMode: saved.videoQualityMode } : {}),
+                ...(saved.defaultAutoArchiveDuration !== undefined ? { defaultAutoArchiveDuration: saved.defaultAutoArchiveDuration } : {}),
+                ...(saved.defaultThreadRateLimitPerUser !== undefined ? { defaultThreadRateLimitPerUser: saved.defaultThreadRateLimitPerUser } : {}),
+                permissionOverwrites: overwrites,
+                reason: 'Restore server structure backup',
+              };
+              if (channel) {
+                await channel.edit(options);
+                channelsUpdated++;
+              } else {
+                channel = await liveGuild.channels.create(options);
+                channelsCreated++;
+              }
+              channelMap.set(saved.id, channel.id);
+            } catch (error) {
+              skipped++;
+              errors.push('Channel "' + saved.name + '": ' + (error.message || 'failed'));
+            }
+          }
+          try {
+            const rolePositions = backup.roles.filter(role => roleMap.has(role.id)).map(role => ({ role: roleMap.get(role.id), position: Math.max(1, Number(role.position) || 1) }));
+            if (rolePositions.length) await liveGuild.roles.setPositions(rolePositions);
+          } catch (error) {
+            errors.push('Role order: ' + (error.message || 'failed'));
+          }
+          try {
+            const channelPositions = backup.channels.filter(channel => channelMap.has(channel.id)).map(channel => ({ channel: channelMap.get(channel.id), position: Math.max(0, Number(channel.position) || 0) }));
+            if (channelPositions.length) await liveGuild.channels.setPositions(channelPositions);
+          } catch (error) {
+            errors.push('Channel order: ' + (error.message || 'failed'));
+          }
+          return send(res, 200, { ok: true, rolesCreated, rolesUpdated, channelsCreated, channelsUpdated, skipped, errors });
         }
         const authorizeMusicPlayer = async () => {
           const actor = await liveGuild.members.fetch(session.user.id).catch(() => null);
