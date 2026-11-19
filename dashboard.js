@@ -866,13 +866,17 @@ function renderReactionRoleList(){
         $('reactionRoleChannel').disabled=true;
         $('reactionRoleMessageId').value=messageId;
         $('reactionRoleMessageId').disabled=true;
+        editingReactionRoleCanEditContent=!!result.canEditContent;
+        $('reactionRoleContent').contentEditable=editingReactionRoleCanEditContent?'true':'false';
+        $('reactionRoleContent').classList.toggle('rr-readonly',!editingReactionRoleCanEditContent);
+        document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=!editingReactionRoleCanEditContent});
         renderReactionRoleMarkdown(result.content||'');
         $('reactionRoleMappings').replaceChildren();
         for(const item of (result.mappings||[]))addReactionRoleMappingRow(item.emoji||'',item.roleId||'');
         updateReactionRoleCount();
-        $('saveReactionRole').textContent='Update message';
+        $('saveReactionRole').textContent=editingReactionRoleCanEditContent?'Update message':'Update role mappings';
         $('cancelReactionRoleEdit').classList.remove('hidden');
-        $('reactionRoleStatus').textContent='Edit the message and its role mappings, then save.';
+        $('reactionRoleStatus').textContent=editingReactionRoleCanEditContent?'Edit the message and its role mappings, then save.':'This message was not written by the bot. Only its role mappings can be changed.';
         showPage('reaction-roles');
         $('reactionRoleContent').focus();
       }catch(e){alert(e.message||'This message cannot be edited.')}
@@ -883,8 +887,12 @@ function renderReactionRoleList(){
   }
 }
 let editingReactionRoleMessageId='';
+let editingReactionRoleCanEditContent=false;
 function cancelReactionRoleEdit(){
   editingReactionRoleMessageId='';
+  editingReactionRoleCanEditContent=false;
+  $('reactionRoleContent').contentEditable='true';$('reactionRoleContent').classList.remove('rr-readonly');
+  document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=false});
   $('reactionRoleChannel').disabled=false;
   $('reactionRoleMessageId').disabled=false;
   $('reactionRoleMessageId').value='';
@@ -904,7 +912,8 @@ $('saveReactionRole').onclick=async()=>{
     if(mappings.some(x=>!x.emoji||!x.roleId)){status.textContent='Complete or remove every incomplete emoji-to-role row.';return}
     button.disabled=true;status.textContent='Updating message and role mappings…';
     try{
-      const result=await api('/api/reaction-roles/'+encodeURIComponent(editingReactionRoleMessageId),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({content:reactionRoleMessageText(),mappings})});
+      const payload={mappings};if(editingReactionRoleCanEditContent)payload.content=reactionRoleMessageText();
+      const result=await api('/api/reaction-roles/'+encodeURIComponent(editingReactionRoleMessageId),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       data.settings.reactionRoles=result.reactionRoles;renderReactionRoleList();
       status.textContent=mappings.length?'Message and role mappings updated.':'Message updated. All reaction-role mappings were removed.';
     }catch(e){status.textContent=e.message||'Could not update this message.'}
@@ -916,7 +925,7 @@ $('saveReactionRole').onclick=async()=>{
   try{
     const result=await api('/api/reaction-roles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelId:$('reactionRoleChannel').value,messageId:$('reactionRoleMessageId').value.trim(),content:reactionRoleMessageText(),mappings})});
     data.settings.reactionRoles=result.reactionRoles;renderReactionRoleList();status.textContent='Saved. Message ID: '+result.messageId;
-    $('reactionRoleMessageId').value='';$('reactionRoleContent').replaceChildren();$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();editingReactionRoleMessageId='';$('reactionRoleChannel').disabled=false;$('reactionRoleMessageId').disabled=false;$('cancelReactionRoleEdit').classList.add('hidden');button.textContent='Save message';
+    $('reactionRoleMessageId').value='';$('reactionRoleContent').replaceChildren();$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();editingReactionRoleMessageId='';editingReactionRoleCanEditContent=false;$('reactionRoleContent').contentEditable='true';$('reactionRoleContent').classList.remove('rr-readonly');document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=false});$('reactionRoleChannel').disabled=false;$('reactionRoleMessageId').disabled=false;$('cancelReactionRoleEdit').classList.add('hidden');button.textContent='Save message';
   }catch(e){status.textContent=e.message||'Could not create reaction roles.'}
   finally{button.disabled=false}
 };
