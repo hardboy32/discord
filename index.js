@@ -30,7 +30,7 @@ const AudioPlayerStatus = Object.freeze({
   Playing: 'playing',
   Paused: 'paused',
 });
-const { startDashboard, getDashboardSettings } = require('./dashboard');
+const { startDashboard, getDashboardSettings, applySavedBotPresence, setBotActivity } = require('./dashboard');
 const { attachCoreModules, getCoreCommands, handleCoreInteraction } = require('./modules');
 const { getCommunityCommands, handleCommunityInteraction, attachCommunityModules } = require('./community');
 const TOKEN = (process.env.DISCORD_TOKEN || '').trim();
@@ -1475,9 +1475,11 @@ const commands = [
       { name: 'Listening to', value: 'listening' },
       { name: 'Watching', value: 'watching' },
       { name: 'Competing in', value: 'competing' },
+      { name: 'Streaming', value: 'streaming' },
       { name: 'Clear activity', value: 'clear' },
     ))
-    .addStringOption(o => o.setName('text').setDescription('Activity text (up to 128 characters)').setMaxLength(128)),
+    .addStringOption(o => o.setName('text').setDescription('Activity text (up to 128 characters)').setMaxLength(128))
+    .addStringOption(o => o.setName('url').setDescription('Twitch or YouTube link (required for Streaming)').setMaxLength(500)),
   new SlashCommandBuilder().setName('welcome-test').setDescription('Send a test welcome message to the configured channel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
@@ -1814,8 +1816,8 @@ client.once(Events.ClientReady, async (readyClient) => {
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome));
   startMusicRequestCleanupScheduler(readyClient);
   logDebug(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
-  readyClient.user.setPresence({ activities: [] });
-  logDebug('Bot activity is cleared. Use /activity to set it.');
+  applySavedBotPresence(readyClient);
+  logDebug('Saved bot status and activity restored.');
   try {
     await registerCommands();
   } catch (error) {
@@ -1906,7 +1908,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const type = interaction.options.getString('type', true);
         const text = (interaction.options.getString('text') || '').trim();
         if (type === 'clear') {
-          client.user.setPresence({ activities: [] });
+          setBotActivity(client, { type: 'none', text: '', url: '' });
           return respond(interaction, 'Bot activity cleared.');
         }
         if (!text) return respond(interaction, 'Enter activity text, for example: /activity type:Playing text:Chess.');
@@ -1916,11 +1918,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           listening: ActivityType.Listening,
           watching: ActivityType.Watching,
           competing: ActivityType.Competing,
+          streaming: ActivityType.Streaming,
         };
         const activityType = activityTypes[type];
         if (!activityType) return respond(interaction, 'Unsupported activity type.');
 
-        client.user.setActivity(text, { type: activityType });
+        setBotActivity(client, { type, text, url: type === 'streaming' ? interaction.options.getString('url') || '' : '' });
         const label = type === 'listening' ? 'Listening to' :
           type === 'watching' ? 'Watching' :
           type === 'competing' ? 'Competing in' : 'Playing';
