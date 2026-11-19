@@ -1421,28 +1421,86 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         if (reactionRoleEditMatch && req.method === 'GET') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const messageId = reactionRoleEditMatch[1];
-          const mapping = (settings.reactionRoles || []).find(item => item.messageId === messageId && item.guildId === liveGuild.id);
-          if (!mapping) return send(res, 404, { error: 'Reaction-role setup not found.' });
-          const channel = await liveGuild.channels.fetch(mapping.channelId).catch(() => null);
+          const mappings = (settings.reactionRoles || []).filter(item => item.messageId === messageId && item.guildId === liveGuild.id);
+          if (!mappings.length) return send(res, 404, { error: 'Reaction-role setup not found.' });
+          const channel = await liveGuild.channels.fetch(mappings[0].channelId).catch(() => null);
           const message = channel && isTextBasedChannel(channel) ? await channel.messages.fetch(messageId).catch(() => null) : null;
           if (!message) return send(res, 404, { error: 'The configured message could not be found.' });
           if (message.author.id !== client.user.id) return send(res, 403, { error: 'Only messages written by this bot can be edited here.' });
-          return send(res, 200, { ok: true, content: message.content || '', channelId: channel.id });
+          const editorMappings = [];
+          for (const item of mappings) {
+            let emojiInput = item.emoji;
+            const existingReaction = message.reactions && message.reactions.cache.find(reaction => (reaction.emoji.id || reaction.emoji.name) === item.emoji);
+            if (existingReaction && existingReaction.emoji) emojiInput = existingReaction.emoji.toString();
+            else if (/^\d{17,20}$/.test(String(item.emoji))) {
+              const guildEmoji = await liveGuild.emojis.fetch(String(item.emoji)).catch(() => null);
+              if (guildEmoji) emojiInput = guildEmoji.toString();
+            }
+            editorMappings.push({ emoji: emojiInput, emojiKey: item.emoji, roleId: item.roleId });
+          }
+          return send(res, 200, { ok: true, content: message.content || '', channelId: channel.id, mappings: editorMappings });
         }
         if (reactionRoleEditMatch && req.method === 'PUT') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
           const messageId = reactionRoleEditMatch[1];
-          const mapping = (settings.reactionRoles || []).find(item => item.messageId === messageId && item.guildId === liveGuild.id);
-          if (!mapping) return send(res, 404, { error: 'Reaction-role setup not found.' });
-          const channel = await liveGuild.channels.fetch(mapping.channelId).catch(() => null);
+          const existingMappings = (settings.reactionRoles || []).filter(item => item.messageId === messageId && item.guildId === liveGuild.id);
+          if (!existingMappings.length) return send(res, 404, { error: 'Reaction-role setup not found.' });
+          const channel = await liveGuild.channels.fetch(existingMappings[0].channelId).catch(() => null);
           const message = channel && isTextBasedChannel(channel) ? await channel.messages.fetch(messageId).catch(() => null) : null;
           if (!message) return send(res, 404, { error: 'The configured message could not be found.' });
           if (message.author.id !== client.user.id) return send(res, 403, { error: 'Only messages written by this bot can be edited here.' });
           const body = await readBody(req, 100000);
           const content = String(body.content || '').trim();
           if (!content || content.length > 1800) return send(res, 400, { error: 'Enter message text (up to 1,800 characters).' });
-          await message.edit({ content, allowedMentions: { parse: [] } });
-          return send(res, 200, { ok: true });
+          if (!Array.isArray(body.mappings) || body.mappings.length > 20) return send(res, 400, { error: 'Use no more than 20 emoji-to-role mappings.' });
+          const botMember = liveGuild.members.me || await liveGuild.members.fetch(client.user.id).catch(() => null);
+          if (!botMember || !botMember.permissions.has('ManageRoles')) return send(res, 403, { error: 'The bot needs the Manage Roles server permission.' });
+          const channelPermissions = channel.permissionsFor(botMember);
+          if (!channelPermissions || !channelPermissions.has(['ViewChannel','ReadMessageHistory','AddReactions'])) return send(res, 403, { error: 'The bot needs View Channel, Read Message History and Add Reactions in this channel.' });
+          const liveRoles = await liveGuild.roles.fetch();
+          const normalized = [];
+          const seen = new Set();
+          for (const item of body.mappings) {
+            const emojiInput = String(item && item.emoji || '').trim();
+            const roleId = String(item && item.roleId || '');
+            const role = liveRoles.get(roleId);
+            if (!emojiInput || emojiInput.length > 100 || !role || role.managed || !role.editable) return send(res, 400, { error: 'A mapping has an invalid emoji or a role the bot cannot manage. Move the bot role above the selected roles.' });
+            const customEmoji = /^<a?:[^:]+:(\d{17,20})>$/.exec(emojiInput);
+            const key = customEmoji ? customEmoji[1] : emojiInput;
+            if (seen.has(key)) return send(res, 400, { error: 'Each emoji can be used only once in a message.' });
+            seen.add(key);
+            normalized.push({ emojiInput, roleId, key });
+          }
+          const addedBotReactions = [];
+          const savedMappings = [];
+          try {
+            for (const item of normalized) {
+              const before = message.reactions.cache.find(reaction => (reaction.emoji.id || reaction.emoji.name) === item.key);
+              const botAlreadyReacted = !!(before && before.me);
+              const reaction = await message.react(item.emojiInput);
+              const key = reaction.emoji.id || reaction.emoji.name;
+              savedMappings.push({ guildId: liveGuild.id, channelId: channel.id, messageId: message.id, emoji: key, roleId: item.roleId, createdByBot: true });
+              if (!botAlreadyReacted) addedBotReactions.push(key);
+            }
+            await message.edit({ content, allowedMentions: { parse: [] } });
+          } catch (error) {
+            for (const key of addedBotReactions) {
+              const reaction = message.reactions.cache.find(item => (item.emoji.id || item.emoji.name) === key);
+              if (reaction) await reaction.users.remove(client.user.id).catch(() => null);
+            }
+            console.warn('Reaction-role edit failed:', error.message || error);
+            return send(res, 400, { error: 'Could not update the message or add one of the selected reactions. Check the emoji and bot permissions.' });
+          }
+          const nextKeys = new Set(savedMappings.map(item => item.emoji));
+          const oldKeys = new Set(existingMappings.map(item => item.emoji));
+          for (const key of oldKeys) {
+            if (nextKeys.has(key)) continue;
+            const reaction = message.reactions.cache.find(item => (item.emoji.id || item.emoji.name) === key);
+            if (reaction && reaction.me) await reaction.users.remove(client.user.id).catch(error => console.warn('Could not remove the bot reaction:', error.message || error));
+          }
+          settings.reactionRoles = (settings.reactionRoles || []).filter(item => !(item.messageId === messageId && item.guildId === liveGuild.id)).concat(savedMappings);
+          saveSettings();
+          return send(res, 200, { ok: true, messageId: message.id, reactionRoles: settings.reactionRoles });
         }
         if (req.method === 'POST' && url.pathname === '/api/reaction-roles') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
