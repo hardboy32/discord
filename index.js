@@ -42,7 +42,15 @@ const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODEL = (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
 const CLOUDFLARE_ACCOUNT_ID = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
 const CLOUDFLARE_API_TOKEN = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
-const CLOUDFLARE_CHAT_MODEL = (process.env.CLOUDFLARE_CHAT_MODEL || '@cf/meta/llama-3.1-8b-instruct').trim();
+const CLOUDFLARE_CHAT_MODEL = (() => {
+  const configuredModel = (process.env.CLOUDFLARE_CHAT_MODEL || '').trim();
+  const deprecatedModel = '@cf/meta/llama-3.1-8b-instruct';
+  if (configuredModel === deprecatedModel) {
+    console.warn('CLOUDFLARE_CHAT_MODEL points to a deprecated model; using @cf/google/gemma-4-26b-a4b-it instead.');
+    return '@cf/google/gemma-4-26b-a4b-it';
+  }
+  return configuredModel || '@cf/google/gemma-4-26b-a4b-it';
+})();
 const CLOUDFLARE_IMAGE_MODEL = (process.env.CLOUDFLARE_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
@@ -1641,16 +1649,65 @@ async function requestAIReply(message, prompt) {
   return answer.trim();
 }
 
+async function translateImagePromptToEnglish(prompt) {
+  // FLUX produces more reliable results with English prompts. Keep English
+  // prompts untouched and translate only text containing Arabic-script letters.
+  if (!/[\\u0600-\\u06FF]/u.test(prompt)) return prompt;
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+    throw new Error('Cloudflare translation is not configured. Check CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.');
+  }
+
+  const endpoint = 'https://api.cloudflare.com/client/v4/accounts/' +
+    encodeURIComponent(CLOUDFLARE_ACCOUNT_ID) + '/ai/v1/chat/completions';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + CLOUDFLARE_API_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: CLOUDFLARE_CHAT_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'Translate the user image-generation description into clear, natural English for an image model. Preserve every visual detail, subject, action, composition, style, lighting, colors, and constraints. Do not add new details, explanations, labels, or quotation marks. Return only the translated prompt.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 500,
+    }),
+    signal: AbortSignal.timeout(12000),
+  });
+
+  if (!response.ok) {
+    const details = (await response.text().catch(() => '')).slice(0, 300);
+    console.error('Cloudflare image prompt translation failed:', response.status, details);
+    if (response.status === 429) throw new Error('Cloudflare usage limit reached while translating the Persian image description. Try again later.');
+    throw new Error('Could not translate the Persian image description (Cloudflare HTTP ' + response.status + ').');
+  }
+
+  const data = await response.json();
+  const translated = data && data.choices && data.choices[0] &&
+    data.choices[0].message && data.choices[0].message.content;
+  if (typeof translated !== 'string' || !translated.trim()) {
+    throw new Error('Cloudflare returned an empty English image description.');
+  }
+  return translated.trim().replace(/^\uFEFF/, '').replace(/^["'“‘]|["'”’]$/g, '').slice(0, 2048);
+}
+
 async function generateCloudflareImage(prompt) {
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
     throw new Error('Image generation is not configured. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in Railway Variables.');
   }
 
-  const cleanPrompt = String(prompt || '').trim();
-  if (!cleanPrompt) throw new Error('Write a description of the image you want to generate.');
-  if (cleanPrompt.length > 2048) {
+  const originalPrompt = String(prompt || '').trim();
+  if (!originalPrompt) throw new Error('Write a description of the image you want to generate.');
+  if (originalPrompt.length > 2048) {
     throw new Error('The image description is too long. Please keep it under 2,048 characters.');
   }
+  const cleanPrompt = await translateImagePromptToEnglish(originalPrompt);
+  if (!cleanPrompt) throw new Error('The image description could not be prepared for FLUX.');
 
   const endpoint = 'https://api.cloudflare.com/client/v4/accounts/' +
     encodeURIComponent(CLOUDFLARE_ACCOUNT_ID) + '/ai/run/' + CLOUDFLARE_IMAGE_MODEL;
