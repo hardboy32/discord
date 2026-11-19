@@ -130,7 +130,7 @@ const defaults = {
     }
   },
   goodbye: { enabled: false, channelId: '', message: 'Goodbye {user}! We will miss you.' },
-  autorole: { enabled: false, roleId: '' },
+  autorole: { enabled: false, roleId: '', roleIds: [] },
   reactionRoles: [],
   music: { enabled: true, requestChannelId: '', artworkMode: 'missing' },
   ai: { enabled: true },
