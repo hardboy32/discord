@@ -1595,6 +1595,7 @@ async function requestAIReply(message, prompt) {
       messages,
       temperature: 0.55,
       max_tokens: 700,
+      ...(provider === 'cloudflare' ? { options: { rejectIfBusy: true } } : {}),
     }),
     signal: AbortSignal.timeout(provider === 'cloudflare' ? 15000 : 45000),
   });
