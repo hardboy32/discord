@@ -420,6 +420,10 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 .actions>span{min-width:0;max-width:100%;overflow-wrap:anywhere;line-height:1.5}
 .field input,.field select,.field textarea{min-width:0}
 .preview img{height:auto}
+#page-autorole .autorole-role-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:8px;max-height:340px;overflow:auto;padding:10px;background:#0d172a;border:1px solid var(--line);border-radius:12px}
+#page-autorole .autorole-role-list .check{min-width:0;margin:0;padding:10px 12px;align-items:center;background:#14213a;border:1px solid #2b3b59;border-radius:9px;overflow-wrap:anywhere}
+#page-autorole .autorole-role-list .check span{min-width:0;overflow-wrap:anywhere}
+#page-autorole .role-list-heading{font-size:14px;margin:18px 0 8px;color:#c9d5ea}
 #page-reaction-roles .panel{padding:14px}
 #page-reaction-roles h2{margin:0 0 10px;font-size:16px}
 #page-reaction-roles .rr-builder{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,260px);gap:8px;align-items:end}
@@ -474,7 +478,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 }
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
-<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="settings">☷ Settings</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="modules">⚙ Modules</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="reaction-roles">🎭 Reaction roles</button><button data-page="backup">⬇ Data backup</button>
+<button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="settings">☷ Settings</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="autorole">⚙ Automatic roles on join</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="reaction-roles">🎭 Reaction roles</button><button data-page="backup">⬇ Data backup</button>
 </nav><div class="sidefoot">Single server • Secure admin access</div></aside><main>
 <header class="top"><div><div class="eyebrow">Control center</div><h1 id="pageTitle">Overview</h1><div class="muted" id="userName">Loading server…</div></div><div><span class="tag" id="serverName">Connected</span></div></header>
 <section id="page-overview" class="page"><div class="stats"><div class="stat"><span class="muted">Members</span><b id="memberCount">—</b></div><div class="stat"><span class="muted">Text channels</span><b id="channelCount">—</b></div><div class="stat"><span class="muted">Bot status</span><b style="color:var(--green)">Online</b></div></div><div class="panel" style="margin-top:18px"><h2>Welcome to your control center</h2><p class="muted">Manage welcome messages, moderation tools and bot modules from one place. Changes are saved to your Railway volume.</p><button onclick="showPage('welcome')">Configure welcome system</button></div><div class="panel"><h2>Quick access</h2><div class="grid"><button class="secondary" onclick="showPage('commands')">Browse bot commands</button><button class="secondary" onclick="showPage('moderation')">Moderation settings</button></div></div></section>
@@ -582,7 +586,24 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <button id="saveModeration">Save moderation and log settings</button> <span id="moderationStatus" role="status"></span>
 <p class="hint">Deleted and edited message logs never include message text. New-message logging records only the author and channel. The administrator audit log requires the bot to have View Audit Log permission. Voice events require the bot to be connected to the server; no private message content is stored. Online status and activity logging additionally require the Presence Intent in Discord Developer Portal and ENABLE_PRESENCE_LOGGING=true in Railway Variables. Presence updates can be frequent.</p>
 </div></section>
-<section id="page-modules" class="page hidden"><div class="panel"><h2>Bot modules</h2><label class="check"><input id="musicEnabled" type="checkbox"> Enable music commands</label><label class="check"><input id="aiEnabled" type="checkbox"> Enable AI replies</label><p class="hint">AI replies require GROQ_API_KEY in Railway Variables.</p><h2 style="margin-top:24px">Automatic roles on join</h2><label class="check"><input id="autoroleEnabled" type="checkbox"> Give selected roles to every new member</label><div id="autoroleRolesList" class="rr-mappings" style="max-height:260px"></div><p class="hint">Select one or more roles. The bot needs Manage Roles permission, and its highest role must be above every selected role.</p><button id="saveModules">Save module settings</button> <span id="moduleStatus"></span></div></section>
+<section id="page-autorole" class="page hidden">
+<div class="panel">
+<h2>Automatic roles on join</h2>
+<p class="muted">Choose the roles that should be assigned automatically whenever a new member joins this server.</p>
+<label class="check"><input id="autoroleEnabled" type="checkbox"> Enable automatic role assignment</label>
+<h3 class="role-list-heading">Roles to assign</h3>
+<div id="autoroleRolesList" class="autorole-role-list"></div>
+<p class="hint">Select one or more roles. The bot needs Manage Roles permission, and its highest role must be above every selected role.</p>
+<div class="actions"><button id="saveModules">Save settings</button><span id="moduleStatus" role="status" aria-live="polite"></span></div>
+</div>
+<div class="panel">
+<h2>Other module switches</h2>
+<p class="muted">These switches are kept here so existing music and AI settings continue to work independently of automatic roles.</p>
+<label class="check"><input id="musicEnabled" type="checkbox"> Enable music commands</label>
+<label class="check"><input id="aiEnabled" type="checkbox"> Enable AI replies</label>
+<p class="hint">AI replies require GROQ_API_KEY in Railway Variables.</p>
+</div>
+</section>
 <section id="page-community" class="page hidden">
 <div class="panel"><h2>Community features</h2><p class="muted">Enable or pause each community system. Setup details such as channels, roles and categories are configured with the listed Discord slash commands.</p>
 <div class="grid">
@@ -626,7 +647,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 </main></div><script>
 const LOG_EVENT_KEYS=["memberJoin","memberLeave","memberBan","memberUnban","memberNicknameUpdate","memberRolesUpdate","memberTimeoutUpdate","memberBoost","memberAvatarUpdate","voiceJoin","voiceLeave","voiceMove","voiceMute","voiceDeafen","voiceVideo","voiceStream","voiceStage","messageCreate","messageEdit","messageDelete","messageDeleteBulk","messagePin","messageReactionAdd","messageReactionRemove","messageReactionClear","pollVoteAdd","pollVoteRemove","automod","autoModerationRuleCreate","autoModerationRuleUpdate","autoModerationRuleDelete","auditLogEntry","channelCreate","channelDelete","channelUpdate","threadCreate","threadUpdate","threadDelete","threadMembersUpdate","roleCreate","roleDelete","roleUpdate","guildUpdate","emojiUpdate","stickerUpdate","soundboardCreate","soundboardUpdate","soundboardDelete","inviteCreate","inviteDelete","webhookUpdate","integrationUpdate","scheduledEventCreate","scheduledEventUpdate","scheduledEventDelete","scheduledEventUserAdd","scheduledEventUserRemove","stageInstanceCreate","stageInstanceUpdate","stageInstanceDelete","voiceEffect","typingStart","soundboardBulkUpdate","applicationCommandPermissionsUpdate","presenceUpdate"];
 const $=id=>document.getElementById(id);let data=null;let imageData='';
-function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',music:'Music player',commands:'Commands',moderation:'Moderation',modules:'Modules',community:'Community features',backup:'Data backup',xp:'XP management','reaction-roles':'Reaction roles',settings:'Settings'})[name]}
+function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));$('page-'+name).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('pageTitle').textContent=({overview:'Overview',welcome:'Welcome builder',music:'Music player',commands:'Commands',moderation:'Moderation',autorole:'Automatic roles on join',community:'Community features',backup:'Data backup',xp:'XP management','reaction-roles':'Reaction roles',settings:'Settings'})[name]}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 function options(select,channels){
   select.replaceChildren();
