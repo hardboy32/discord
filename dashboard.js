@@ -645,65 +645,86 @@ function updateWelcomeMode(){const imageMode=$('welcomeType').value==='image';$(
 function preview(){const msg=$('welcomeMessage').value||'Welcome {user} to {server}!';$('previewMessage').textContent=msg.replaceAll('{user}','@NewMember').replaceAll('{username}','NewMember').replaceAll('{server}',data.guild.name).replaceAll('{count}',String(data.guild.memberCount||0));$('previewServer').textContent=data.guild.name;updateWelcomeMode()}
 let activeReactionEmojiInput=null;
 let activeReactionMessageTextarea=false;
-$('reactionRoleContent').addEventListener('focus',()=>{activeReactionMessageTextarea=true;activeReactionEmojiInput=null});
-function reactionRoleMessageText(){
-  const root=$('reactionRoleContent'),tick=String.fromCharCode(96);
-  function read(node){
-    if(node.nodeType===3)return node.nodeValue||'';
-    if(node.nodeType!==1)return '';
-    const tag=node.tagName;
-    if(tag==='IMG')return node.dataset.discordEmoji||node.alt||'';
-    if(tag==='BR')return '\\n';
-    const inner=[...node.childNodes].map(read).join('');
-    if(tag==='B'||tag==='STRONG')return '**'+inner+'**';
-    if(tag==='I'||tag==='EM')return '*'+inner+'*';
-    if(tag==='U')return '__'+inner+'__';
-    if(tag==='S'||tag==='STRIKE'||tag==='DEL')return '~~'+inner+'~~';
-    if(node.dataset.mdFormat==='code')return tick+inner+tick;
-    if(node.dataset.mdFormat==='spoiler')return '||'+inner+'||';
-    if(tag==='A')return '['+inner+']('+node.getAttribute('href')+')';
-    if(tag==='BLOCKQUOTE')return inner.split('\\n').map(line=>line?'> '+line:line).join('\\n');
-    if(tag==='PRE')return tick+tick+tick+'\\n'+inner.replace(/\\n+$/,'')+'\\n'+tick+tick+tick;
-    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+[...li.childNodes].map(read).join('')}).join('\\n')}
-    if((tag==='DIV'||tag==='P')&&node.nextSibling)return inner+'\\n';
-    return inner;
-  }
-  return [...root.childNodes].map(read).join('').replace(/\\n+$/,'');
-}
 let rrEditorSavedRange=null;
-function saveReactionRoleEditorSelection(){const field=$('reactionRoleContent'),sel=window.getSelection();if(sel&&sel.rangeCount&&field.contains(sel.getRangeAt(0).commonAncestorContainer))rrEditorSavedRange=sel.getRangeAt(0).cloneRange()}
-function restoreReactionRoleEditorSelection(){const field=$('reactionRoleContent'),sel=window.getSelection();field.focus();if(rrEditorSavedRange&&field.contains(rrEditorSavedRange.commonAncestorContainer)){sel.removeAllRanges();sel.addRange(rrEditorSavedRange)}}
+$('reactionRoleContent').addEventListener('focus',()=>{activeReactionMessageTextarea=true;activeReactionEmojiInput=null});
+function saveReactionRoleEditorSelection(){
+  const field=$('reactionRoleContent'),sel=window.getSelection();
+  if(sel&&sel.rangeCount&&field.contains(sel.getRangeAt(0).commonAncestorContainer))rrEditorSavedRange=sel.getRangeAt(0).cloneRange();
+}
+function restoreReactionRoleEditorSelection(){
+  const field=$('reactionRoleContent'),sel=window.getSelection();field.focus();
+  if(rrEditorSavedRange&&field.contains(rrEditorSavedRange.commonAncestorContainer)){sel.removeAllRanges();sel.addRange(rrEditorSavedRange)}
+  else{const range=document.createRange();range.selectNodeContents(field);range.collapse(false);sel.removeAllRanges();sel.addRange(range);rrEditorSavedRange=range.cloneRange()}
+  return sel.getRangeAt(0);
+}
+function renderReactionRoleMarkdown(value){
+  const root=$('reactionRoleContent');root.replaceChildren();
+  const lines=String(value||'').replace(/\\r\\n?/g,'\\n').split('\\n');
+  for(const lineText of lines){
+    const line=document.createElement('div');
+    if(!lineText){line.appendChild(document.createElement('br'));root.appendChild(line);continue}
+    const pattern=/(<a?:[A-Za-z0-9_]{2,32}:\\d{17,20}>|\\*\\*[^*]+\\*\\*|__[^_]+__|~~[^~]+~~|\\|\\|[^|]+\\|\\||\\*[^*]+\\*)/g;
+    let cursor=0,match;
+    while((match=pattern.exec(lineText))){
+      if(match.index>cursor)line.appendChild(document.createTextNode(lineText.slice(cursor,match.index)));
+      const token=match[0];
+      if(token.startsWith('<')){
+        const parsed=/^<a?:([^:]+):(\\d{17,20})>$/.exec(token),emoji=parsed&&(data.emojis||[]).find(item=>item.id===parsed[2]);
+        const img=document.createElement('img');img.className='rr-inline-emoji';img.contentEditable='false';img.dataset.discordEmoji=token;img.alt=parsed?':'+parsed[1]+':':token;img.title=img.alt;
+        if(emoji)img.src='https://cdn.discordapp.com/emojis/'+encodeURIComponent(emoji.id)+'.'+(emoji.animated?'gif':'png')+'?size=64&quality=lossless';
+        line.appendChild(img);
+      }else{
+        let tag='span',format='',content=token;
+        if(token.startsWith('**')){tag='strong';content=token.slice(2,-2)}
+        else if(token.startsWith('__')){tag='u';content=token.slice(2,-2)}
+        else if(token.startsWith('~~')){tag='s';content=token.slice(2,-2)}
+        else if(token.startsWith('||')){format='spoiler';content=token.slice(2,-2)}
+        else if(token.startsWith('*')){tag='em';content=token.slice(1,-1)}
+        else if(token.startsWith(String.fromCharCode(96))){format='code';content=token.slice(1,-1)}
+        const element=document.createElement(tag);if(format)element.dataset.mdFormat=format;element.textContent=content;line.appendChild(element);
+      }
+      cursor=pattern.lastIndex;
+    }
+    if(cursor<lineText.length)line.appendChild(document.createTextNode(lineText.slice(cursor)));
+    root.appendChild(line);
+  }
+  rrEditorSavedRange=null;
+}
+function insertReactionRoleTextAtSelection(value){
+  const range=restoreReactionRoleEditorSelection(),fragment=document.createDocumentFragment(),parts=String(value).split('\\n');
+  parts.forEach((part,index)=>{if(index)fragment.appendChild(document.createElement('br'));if(part)fragment.appendChild(document.createTextNode(part))});
+  range.deleteContents();range.insertNode(fragment);range.collapse(false);
+  const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);saveReactionRoleEditorSelection();
+}
 function wrapReactionRoleSelection(kind){
-  restoreReactionRoleEditorSelection();const sel=window.getSelection();if(!sel||!sel.rangeCount)return;
-  const range=sel.getRangeAt(0),span=document.createElement('span');span.dataset.mdFormat=kind;
-  if(range.collapsed){span.textContent='text';range.insertNode(span)}else{span.appendChild(range.extractContents());range.insertNode(span)}
-  sel.removeAllRanges();const next=document.createRange();next.selectNodeContents(span);sel.addRange(next);saveReactionRoleEditorSelection();
+  const range=restoreReactionRoleEditorSelection(),span=document.createElement('span');span.dataset.mdFormat=kind;
+  if(range.collapsed)span.textContent='text';else span.appendChild(range.extractContents());
+  range.insertNode(span);const sel=window.getSelection(),next=document.createRange();next.selectNodeContents(span);sel.removeAllRanges();sel.addRange(next);saveReactionRoleEditorSelection();
 }
 function prefixReactionRoleLines(kind){
-  restoreReactionRoleEditorSelection();const sel=window.getSelection();if(!sel||!sel.rangeCount)return;
-  let prefix=kind==='quote'?'> ':kind==='codeblock'?String.fromCharCode(96).repeat(3)+'\\n':'- ';
-  const value=(sel.toString()||'text').split('\\n').map(line=>prefix+line).join('\\n');
-  document.execCommand('insertText',false,value);saveReactionRoleEditorSelection();
+  const range=restoreReactionRoleEditorSelection(),selected=range.toString()||'text';
+  const fence=String.fromCharCode(96).repeat(3),prefix=kind==='quote'?'> ':fence+'\\n';
+  insertReactionRoleTextAtSelection(selected.split('\\n').map(line=>prefix+line).join('\\n')+(kind==='codeblock'?'\\n'+fence:''));
 }
-document.querySelectorAll('[data-rr-command]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>{restoreReactionRoleEditorSelection();document.execCommand(button.dataset.rrCommand,false,null);saveReactionRoleEditorSelection()})});
-document.querySelectorAll('[data-rr-wrap]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>wrapReactionRoleSelection(button.dataset.rrWrap))});
-document.querySelectorAll('[data-rr-block]').forEach(button=>{button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>prefixReactionRoleLines(button.dataset.rrBlock))});
-$('reactionRoleContent').addEventListener('keyup',saveReactionRoleEditorSelection);$('reactionRoleContent').addEventListener('mouseup',saveReactionRoleEditorSelection);$('reactionRoleContent').addEventListener('input',saveReactionRoleEditorSelection);
-document.querySelector('[data-rr-link]').addEventListener('mousedown',e=>e.preventDefault());
-document.querySelector('[data-rr-link]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();const url=window.prompt('Enter link URL (https://...)');if(!url)return;if(!/^https?:\\/\\//i.test(url)){alert('Use an http:// or https:// link.');return}document.execCommand('createLink',false,url);saveReactionRoleEditorSelection()});
-document.querySelector('[data-rr-clear]').addEventListener('mousedown',e=>e.preventDefault());
+document.addEventListener('selectionchange',()=>{const field=$('reactionRoleContent'),sel=window.getSelection();if(sel&&sel.rangeCount&&field.contains(sel.getRangeAt(0).commonAncestorContainer))saveReactionRoleEditorSelection()});
+$('reactionRoleContent').addEventListener('keyup',saveReactionRoleEditorSelection);
+$('reactionRoleContent').addEventListener('mouseup',saveReactionRoleEditorSelection);
+$('reactionRoleContent').addEventListener('input',saveReactionRoleEditorSelection);
+$('reactionRoleContent').addEventListener('blur',saveReactionRoleEditorSelection);
+$('reactionRoleContent').addEventListener('paste',event=>{event.preventDefault();insertReactionRoleTextAtSelection((event.clipboardData||window.clipboardData).getData('text/plain'))});
+document.querySelectorAll('[data-rr-command]').forEach(button=>{button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>{restoreReactionRoleEditorSelection();if(typeof document.execCommand==='function')document.execCommand(button.dataset.rrCommand,false,null);saveReactionRoleEditorSelection()})});
+document.querySelectorAll('[data-rr-wrap]').forEach(button=>{button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>wrapReactionRoleSelection(button.dataset.rrWrap))});
+document.querySelectorAll('[data-rr-block]').forEach(button=>{button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>prefixReactionRoleLines(button.dataset.rrBlock))});
+document.querySelector('[data-rr-link]').addEventListener('mousedown',event=>event.preventDefault());
+document.querySelector('[data-rr-link]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();const url=window.prompt('Enter a link URL');if(!url)return;if(!/^https?:\\/\\//i.test(url)){alert('Use an http:// or https:// link.');return}document.execCommand('createLink',false,url);saveReactionRoleEditorSelection()});
+document.querySelector('[data-rr-clear]').addEventListener('mousedown',event=>event.preventDefault());
 document.querySelector('[data-rr-clear]').addEventListener('click',()=>{restoreReactionRoleEditorSelection();document.execCommand('removeFormat',false,null);saveReactionRoleEditorSelection()});
 function insertReactionRoleEmoji(code,item){
-  const field=$('reactionRoleContent');
-  const image=document.createElement('img');
-  image.className='rr-inline-emoji';image.contentEditable='false';image.dataset.discordEmoji=code;image.alt=':'+item.name+':';image.title=':'+item.name+':';
+  const field=$('reactionRoleContent'),range=restoreReactionRoleEditorSelection();
+  const image=document.createElement('img');image.className='rr-inline-emoji';image.contentEditable='false';image.dataset.discordEmoji=code;image.alt=':'+item.name+':';image.title=':'+item.name+':';
   image.src='https://cdn.discordapp.com/emojis/'+encodeURIComponent(item.id)+'.'+(item.animated?'gif':'png')+'?size=64&quality=lossless';
-  const selection=window.getSelection();
-  let range=null;
-  if(selection&&selection.rangeCount){const candidate=selection.getRangeAt(0);if(field.contains(candidate.commonAncestorContainer))range=candidate}
-  if(!range){range=document.createRange();range.selectNodeContents(field);range.collapse(false)}
   range.deleteContents();range.insertNode(image);range.setStartAfter(image);range.collapse(true);
-  selection.removeAllRanges();selection.addRange(range);field.focus();
+  const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);field.focus();saveReactionRoleEditorSelection();
 }
 function addReactionRoleMappingRow(emojiValue='',roleValue=''){
   const row=document.createElement('div');row.className='rr-row';
