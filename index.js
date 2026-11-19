@@ -1476,6 +1476,8 @@ const commands = [
       { name: 'Clear activity', value: 'clear' },
     ))
     .addStringOption(o => o.setName('text').setDescription('Activity text (up to 128 characters)').setMaxLength(128)),
+  new SlashCommandBuilder().setName('welcome-test').setDescription('Send a test welcome message to the configured channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
   new SlashCommandBuilder().setName('help').setDescription('Show the command list'),
 ].map(command => command.toJSON());
@@ -1711,34 +1713,44 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-client.on(Events.GuildMemberAdd, async (member) => {
-  const config = getDashboardSettings(member.guild.id).welcome;
-  if (!config.enabled || !config.channelId) return;
-  const channel = member.guild.channels.cache.get(config.channelId);
-  if (!channel || !channel.isTextBased()) return;
-
-  // Image mode sends only the uploaded image; text placeholders and mention
-  // settings belong exclusively to text mode.
-  if (config.type === 'image') {
-    if (!config.imagePath || !fs.existsSync(config.imagePath)) {
-      console.error('Welcome image mode is enabled, but the image file is missing.');
-      return;
-    }
-    await channel.send({ files: [{ attachment: config.imagePath, name: path.basename(config.imagePath) }] })
-      .catch(error => console.error('Welcome image failed:', error.message || error));
-    return;
+async function sendWelcomeMessage(member, config, channelOverride = null) {
+  const channel = channelOverride || await member.guild.channels.fetch(config.channelId).catch(() => null);
+  if (!channel || !channel.isTextBased() || typeof channel.send !== 'function') {
+    throw new Error('The configured welcome channel is unavailable or cannot receive messages.');
   }
 
   const shouldMention = config.mention !== false;
+  if (config.type === 'image') {
+    if (!config.imagePath || !fs.existsSync(config.imagePath)) {
+      throw new Error('Welcome image mode is enabled, but the image file is missing. Upload a GIF or image in the dashboard first.');
+    }
+    await channel.send({
+      content: shouldMention ? '<@' + member.id + '>' : undefined,
+      files: [{ attachment: config.imagePath, name: path.basename(config.imagePath) }],
+      allowedMentions: shouldMention ? { users: [member.id] } : { parse: [] },
+    });
+    return;
+  }
+
   const content = String(config.message || 'Welcome {user} to {server}!')
-    .replace(/\{user\}/g, shouldMention ? '<@' + member.id + '>' : member.user.username)
-    .replace(/\{username\}/g, member.user.username)
-    .replace(/\{server\}/g, member.guild.name)
-    .replace(/\{count\}/g, String(member.guild.memberCount));
+    .replace(/\\{user\\}/g, shouldMention ? '<@' + member.id + '>' : member.user.username)
+    .replace(/\\{username\\}/g, member.user.username)
+    .replace(/\\{server\\}/g, member.guild.name)
+    .replace(/\\{count\\}/g, String(member.guild.memberCount));
   await channel.send({
     content,
     allowedMentions: shouldMention ? { users: [member.id] } : { parse: [] },
-  }).catch(error => console.error('Welcome message failed:', error.message || error));
+  });
+}
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  const config = getDashboardSettings(member.guild.id).welcome;
+  if (!config.enabled || !config.channelId) return;
+  try {
+    await sendWelcomeMessage(member, config);
+  } catch (error) {
+    console.error('Welcome message failed:', error.message || error);
+  }
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
@@ -1812,6 +1824,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     switch (interaction.commandName) {
+      case 'welcome-test': {
+        if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild) && !interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+          return respond(interaction, 'You need Manage Server or Administrator permission to test welcome messages.');
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const config = getDashboardSettings(interaction.guildId).welcome;
+        if (!config.channelId) return respond(interaction, 'Choose a welcome channel in the dashboard first.');
+        try {
+          const member = await interaction.guild.members.fetch(interaction.user.id);
+          await sendWelcomeMessage(member, config);
+          return respond(interaction, 'Test welcome message sent to the configured channel.');
+        } catch (error) {
+          return respond(interaction, 'Welcome test failed: ' + (error.message || 'Unknown error'));
+        }
+      }
       case 'ping':
         return interaction.reply({ content: 'Pong! ' + client.ws.ping + ' ms', flags: MessageFlags.Ephemeral });
 
