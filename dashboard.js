@@ -728,11 +728,13 @@ function insertReactionRoleEmoji(code,item){
 }
 function addReactionRoleMappingRow(emojiValue='',roleValue=''){
   const row=document.createElement('div');row.className='rr-row';
-  const emoji=document.createElement('input');emoji.maxLength=100;emoji.placeholder='🎮 or custom emoji';emoji.value=emojiValue;emoji.title='Emoji';emoji.addEventListener('focus',()=>{activeReactionEmojiInput=emoji;activeReactionMessageTextarea=false});
+  const emoji=document.createElement('input');emoji.maxLength=100;emoji.placeholder='🎮 or custom emoji';emoji.value=emojiValue;emoji.title='Emoji';
+  emoji.addEventListener('focus',()=>{activeReactionEmojiInput=emoji;activeReactionMessageTextarea=false});
   const role=document.createElement('select');role.innerHTML='<option value="">Choose role</option>';
   for(const item of data.roles){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;role.appendChild(option)}
-  role.value=roleValue;role.title='Role';
-  const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='×';remove.title='Remove mapping';remove.onclick=()=>{if(activeReactionEmojiInput===emoji)activeReactionEmojiInput=null;row.remove();updateReactionRoleCount()};
+  role.value=roleValue;role.title='Role';role.addEventListener('focus',()=>{activeReactionEmojiInput=null;activeReactionMessageTextarea=false});
+  const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='×';remove.title='Remove mapping';
+  remove.onclick=()=>{if(activeReactionEmojiInput===emoji)activeReactionEmojiInput=null;row.remove();updateReactionRoleCount()};
   row.append(emoji,role,remove);$('reactionRoleMappings').appendChild(row);updateReactionRoleCount();
 }
 function renderReactionRoleEmojiGallery(){
@@ -741,6 +743,7 @@ function renderReactionRoleEmojiGallery(){
   if(!emojis.length){const empty=document.createElement('span');empty.className='rr-emoji-empty';empty.textContent='This server has no custom emojis, or the bot cannot access them.';gallery.appendChild(empty);return}
   for(const item of emojis){
     const button=document.createElement('button');button.type='button';button.className='rr-emoji-choice';button.title='Use :'+item.name+':';
+    button.addEventListener('mousedown',event=>event.preventDefault());
     const img=document.createElement('img');img.alt=':'+item.name+':';img.loading='lazy';img.src='https://cdn.discordapp.com/emojis/'+encodeURIComponent(item.id)+'.'+(item.animated?'gif':'png')+'?size=48&quality=lossless';
     img.onerror=()=>{img.style.display='none'};
     const name=document.createElement('span');name.textContent=item.name;
