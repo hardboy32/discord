@@ -1283,6 +1283,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           if (!channel || !channel.isTextBased() || typeof channel.send !== 'function') return send(res, 400, { error: 'Choose a valid text channel.' });
           if (!Array.isArray(body.mappings) || body.mappings.length < 1 || body.mappings.length > 20) return send(res, 400, { error: 'Add between 1 and 20 emoji-to-role mappings.' });
           const botMember = liveGuild.members.me || await liveGuild.members.fetch(client.user.id).catch(() => null);
+          if (!botMember || !botMember.permissions.has('ManageRoles')) return send(res, 403, { error: 'The bot needs the Manage Roles server permission.' });
           const permissions = botMember && channel.permissionsFor(botMember);
           if (!permissions || !permissions.has(['ViewChannel','SendMessages','ReadMessageHistory','AddReactions'])) return send(res, 403, { error: 'The bot needs View Channel, Send Messages, Read Message History and Add Reactions in the selected channel.' });
           const liveRoles = await liveGuild.roles.fetch();
