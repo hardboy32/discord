@@ -615,7 +615,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <div class="rr-tools"><b style="font-size:14px">Emoji → role</b><span class="tag" id="reactionRoleCount">0 mappings</span><span style="flex:1"></span><button id="addReactionRoleMapping" class="secondary" type="button">+ Add</button></div>
 <div><b style="font-size:13px">Server emojis</b><p class="rr-help">Click an emoji to insert it into the message or selected mapping.</p><div id="reactionRoleEmojiGallery" class="rr-emoji-gallery"><span class="rr-emoji-empty">Loading server emojis…</span></div></div>
 <div id="reactionRoleMappings" class="rr-mappings"></div>
-<div class="rr-tools"><button id="saveReactionRole">Save message</button><span id="reactionRoleStatus" role="status"></span></div>
+<div class="rr-tools"><button id="saveReactionRole" type="button">Save message</button><button id="cancelReactionRoleEdit" class="secondary hidden" type="button">Cancel edit</button><span id="reactionRoleStatus" role="status"></span></div>
 </div>
 <div class="panel"><h2>Configured messages</h2><div id="reactionRoleList" class="rr-list muted">No reaction-role messages configured.</div></div>
 </section>
@@ -692,7 +692,7 @@ function renderReactionRoleMarkdown(value){
   for(let i=0;i<lines.length;){
     if(lines[i].startsWith(fence)){
       const code=[];i++;while(i<lines.length&&!lines[i].startsWith(fence))code.push(lines[i++]);if(i<lines.length)i++;
-      const pre=document.createElement('pre');pre.textContent=code.join('\\\\n');root.appendChild(pre);continue;
+      const pre=document.createElement('pre');pre.textContent=code.join('\\n');root.appendChild(pre);continue;
     }
     if(/^\\s*>\\s?/.test(lines[i])){
       const quote=document.createElement('blockquote');
@@ -719,29 +719,31 @@ function reactionRoleMessageText(){
   const blockTags=new Set(['DIV','P','UL','OL','PRE','BLOCKQUOTE']);
   function children(node){
     const nodes=[...node.childNodes];let result='';
-    nodes.forEach((child,index)=>{if(index&&(blockTags.has(child.nodeName)||blockTags.has(nodes[index-1].nodeName)))result+='\\\\n';result+=read(child)});
+    nodes.forEach((child,index)=>{if(index&&(blockTags.has(child.nodeName)||blockTags.has(nodes[index-1].nodeName)))result+='\\n';result+=read(child)});
     return result;
   }
   function read(node){
     if(node.nodeType===3)return node.nodeValue||'';if(node.nodeType!==1)return '';
-    const tag=node.tagName;if(tag==='IMG')return node.dataset.discordEmoji||node.alt||'';if(tag==='BR')return '\\\\n';
+    const tag=node.tagName;if(tag==='IMG')return node.dataset.discordEmoji||node.alt||'';if(tag==='BR')return '\\n';
     const inner=children(node);
     if(tag==='B'||tag==='STRONG')return '**'+inner+'**';if(tag==='I'||tag==='EM')return '*'+inner+'*';if(tag==='U')return '__'+inner+'__';
     if(tag==='S'||tag==='STRIKE'||tag==='DEL')return '~~'+inner+'~~';
     if(node.dataset.mdFormat==='code'||tag==='CODE')return tick+inner+tick;
     if(node.dataset.mdFormat==='spoiler')return '||'+inner+'||';
     if(tag==='A'){const href=node.getAttribute('href')||'';return /^https?:\\/\\//i.test(href)?'['+inner+']('+href+')':inner}
-    if(tag==='BLOCKQUOTE')return inner.split('\\\\n').map(line=>'> '+line).join('\\\\n');
-    if(tag==='PRE')return tick.repeat(3)+'\\\\n'+(node.textContent||'').replace(/\\\\n+$/,'')+'\\\\n'+tick.repeat(3);
-    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+children(li)}).join('\\\\n')}
+    if(tag==='BLOCKQUOTE')return inner.split('\\n').map(line=>'> '+line).join('\\n');
+    if(tag==='PRE')return tick.repeat(3)+'\\n'+(node.textContent||'').replace(/\\n+$/,'')+'\\n'+tick.repeat(3);
+    if(tag==='UL'||tag==='OL'){let index=0;return [...node.children].map(li=>{index++;return (tag==='UL'?'- ':index+'. ')+children(li)}).join('\\n')}
     return inner;
   }
-  return children(root).replace(/\\\\n+$/,'');
+  return children(root).replace(/\\n+$/,'');
 }
 function insertReactionRoleTextAtSelection(value){
-  const range=restoreReactionRoleEditorSelection(),fragment=document.createDocumentFragment(),parts=String(value).split('\\n');
-  parts.forEach((part,index)=>{if(index)fragment.appendChild(document.createElement('br'));if(part)fragment.appendChild(document.createTextNode(part))});
-  range.deleteContents();range.insertNode(fragment);range.collapse(false);
+  const range=restoreReactionRoleEditorSelection(),parts=String(value).split('\\n'),nodes=[];
+  parts.forEach((part,index)=>{if(index)nodes.push(document.createElement('br'));if(part)nodes.push(document.createTextNode(part))});
+  range.deleteContents();
+  let last=null;
+  for(const node of nodes){range.insertNode(node);last=node;if(last){range.setStartAfter(last);range.collapse(true)}}
   const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);saveReactionRoleEditorSelection();
 }
 function wrapReactionRoleSelection(kind){
@@ -751,8 +753,9 @@ function wrapReactionRoleSelection(kind){
 }
 function prefixReactionRoleLines(kind){
   const range=restoreReactionRoleEditorSelection(),selected=range.toString()||'text';
-  const fence=String.fromCharCode(96).repeat(3),prefix=kind==='quote'?'> ':fence+'\\n';
-  insertReactionRoleTextAtSelection(selected.split('\\n').map(line=>prefix+line).join('\\n')+(kind==='codeblock'?'\\n'+fence:''));
+  const fence=String.fromCharCode(96).repeat(3);
+  const value=kind==='quote'?selected.split('\\n').map(line=>'> '+line).join('\\n'):fence+'\\n'+selected+'\\n'+fence;
+  insertReactionRoleTextAtSelection(value);
 }
 document.addEventListener('selectionchange',()=>{const field=$('reactionRoleContent'),sel=window.getSelection();if(sel&&sel.rangeCount&&field.contains(sel.getRangeAt(0).commonAncestorContainer))saveReactionRoleEditorSelection()});
 $('reactionRoleContent').addEventListener('keyup',saveReactionRoleEditorSelection);
