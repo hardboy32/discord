@@ -1700,7 +1700,7 @@ async function generateCloudflareImage(prompt) {
   }
 
   if (!imageBuffer.length) throw new Error('Cloudflare returned an empty image.');
-  if (imageBuffer.length > 20 * 1024 * 1024) throw new Error('The generated image is too large to upload to Discord.');
+  if (imageBuffer.length > 8 * 1024 * 1024) throw new Error('The generated image is larger than the bot upload limit (8 MB).');
 
   const isJpeg = contentType.includes('jpeg') || (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8);
   return {
