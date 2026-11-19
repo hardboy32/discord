@@ -503,6 +503,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <label class="check"><input id="musicEnabled" type="checkbox"> Enable music commands</label>
 <div class="actions"><button id="saveMusicEnabled">Save music settings</button><span id="musicEnabledStatus" role="status" aria-live="polite"></span></div>
 </div>
+
 <div class="panel">
 <h2>Play music from the dashboard</h2>
 <p class="muted">Paste a link from a site supported by yt-dlp, or a direct audio-file URL. The bot will extract the audio and play it in your selected voice channel.</p>
@@ -516,9 +517,9 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <select id="musicHistorySelect"><option value="">No history yet</option></select>
 <button id="playMusicHistory" class="secondary" type="button" style="margin-top:10px">▶ Play selected history</button>
 </div>
-</div>
 <p class="hint">Supports many sites through yt-dlp and direct audio URLs. Some sites may block bots or require login/subscription. Playlists and live streams may not work. The bot needs Connect and Speak permissions.</p>
 </div>
+
 <div class="panel">
 <h2>Playback controls</h2>
 <div id="dashboardPlayerTitle" style="font-weight:700;margin-bottom:10px">Nothing is playing</div>
@@ -533,10 +534,12 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <button id="playerSeek">Seek / play segment</button>
 <button id="playerStop" class="danger">■ Stop</button>
 </div>
-<div class="player-progress"><div class="player-progress-track"><div id="playerProgressFill" class="player-progress-fill"></div></div><div id="playerProgressThumb" class="player-progress-thumb"></div><input id="playerProgressSlider" type="range" min="0" max="100" step="any" value="0" aria-label="Playback progress"></div><div class="muted" id="playerProgress" style="margin-top:6px">00:00 / 00:00</div>
+<div class="player-progress"><div class="player-progress-track"><div id="playerProgressFill" class="player-progress-fill"></div></div><div id="playerProgressThumb" class="player-progress-thumb"></div><input id="playerProgressSlider" type="range" min="0" max="100" step="any" value="0" aria-label="Playback progress"></div>
+<div class="muted" id="playerProgress" style="margin-top:6px">00:00 / 00:00</div>
 <div class="hint">Set a start position and optional end position to play just one selected part of the current track. You can also jump backward or forward by 10 seconds.</div>
 <span id="playerControlStatus" role="status" aria-live="polite"></span>
 </div>
+
 <div class="panel">
 <h2>Saved music library</h2>
 <p class="muted">Upload an audio file once. It stays on the Railway Volume after restarts and redeploys until you delete it. Choose a voice channel to play it in Discord.</p>
