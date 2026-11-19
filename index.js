@@ -1652,7 +1652,7 @@ async function requestAIReply(message, prompt) {
 async function translateImagePromptToEnglish(prompt) {
   // FLUX produces more reliable results with English prompts. Keep English
   // prompts untouched and translate only text containing Arabic-script letters.
-  if (!/[\\u0600-\\u06FF]/u.test(prompt)) return prompt;
+  if (!/[\u0600-\u06FF]/u.test(prompt)) return prompt;
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
     throw new Error('Cloudflare translation is not configured. Check CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.');
   }
