@@ -567,9 +567,9 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <div class="field"><span>Current artwork preview</span><div class="preview"><img id="musicFallbackPreview" alt="Current fallback music artwork" style="max-height:190px"></div></div>
 </div>
 <div class="actions"><button id="uploadMusicFallbackGif">⬆ Upload / replace GIF</button><span id="musicFallbackGifStatus" role="status" aria-live="polite"></span></div>
-<div class="grid" style="margin-top:12px">
+<div style="margin-top:12px">
 <label class="field">Artwork behavior<select id="musicArtworkMode"><option value="missing">Only when the song has no cover</option><option value="force">Force uploaded GIF on every song</option></select></label>
-<div class="field"><span>Apply behavior</span><button id="saveMusicArtworkMode" type="button">Save artwork mode</button><span id="musicArtworkModeStatus" role="status" aria-live="polite"></span></div>
+<div class="actions"><button id="saveMusicArtworkMode" type="button">Save artwork mode</button><span id="musicArtworkModeStatus" role="status" aria-live="polite"></span></div>
 </div>
 <p class="hint">“Force” replaces the track's own cover in the Discord music panel. “Only when missing” keeps each song's original cover whenever available. The setting is saved on Railway.</p>
 </div>
