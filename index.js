@@ -1756,7 +1756,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Runtime process ID:', process.pid);
   logDebug('Logged in as ' + readyClient.user.tag);
-  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic);
+  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome));
   startMusicRequestCleanupScheduler(readyClient);
   logDebug(GROQ_API_KEY ? 'AI chat is enabled via Groq model ' + GROQ_MODEL + '.' : 'AI chat is disabled: set GROQ_API_KEY in Environment Variables.');
   readyClient.user.setPresence({ activities: [] });
