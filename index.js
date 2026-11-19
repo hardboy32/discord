@@ -36,8 +36,8 @@ const { getCommunityCommands, handleCommunityInteraction, attachCommunityModules
 const TOKEN = (process.env.DISCORD_TOKEN || '').trim();
 const CLIENT_ID = (process.env.DISCORD_CLIENT_ID || '').trim();
 const BOT_OWNER_ID = (process.env.BOT_OWNER_ID || '').trim();
-const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
-const GROQ_MODEL = (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
+const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim();
 const GUILD_ID = (process.env.DISCORD_GUILD_ID || '').trim();
 const WARNINGS_FILE = process.env.WARNINGS_FILE || path.join(__dirname, 'data', 'warnings.json');
 
@@ -1501,8 +1501,8 @@ async function registerCommands() {
 }
 
 async function requestAIReply(message, prompt) {
-  if (!GROQ_API_KEY) {
-    throw new Error('AI is not configured. Add GROQ_API_KEY in the hosting environment variables.');
+  if (!GEMINI_API_KEY) {
+    throw new Error('AI is not configured. Add GEMINI_API_KEY in the hosting environment variables.');
   }
 
   const conversationKey = [message.guildId, message.channelId, message.author.id].join(':');
@@ -1560,29 +1560,29 @@ async function requestAIReply(message, prompt) {
     { role: 'user', content: cleanPrompt },
   ];
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
     method: 'POST',
     headers: {
-      Authorization: 'Bearer ' + GROQ_API_KEY,
+      Authorization: 'Bearer ' + GEMINI_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: GEMINI_MODEL,
       messages,
       temperature: 0.55,
-      max_completion_tokens: 700,
+      max_tokens: 700,
     }),
     signal: AbortSignal.timeout(45000),
   });
 
   if (!response.ok) {
     const details = (await response.text().catch(() => '')).slice(0, 500);
-    console.error('Groq API request failed:', response.status, details);
+    console.error('Gemini API request failed:', response.status, details);
     if (response.status === 429) throw new Error('The free AI usage limit has been reached. Try again later.');
     if (response.status === 401 || response.status === 403) {
       throw new Error('The AI API key is invalid or does not have permission to use this model.');
     }
-    throw new Error('The AI service could not answer right now (HTTP ' + response.status + ').');
+    throw new Error('The Gemini service could not answer right now (HTTP ' + response.status + ').');
   }
 
   const data = await response.json();
