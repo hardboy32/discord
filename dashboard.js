@@ -608,16 +608,16 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <div class="panel"><h2>Advanced module configuration</h2><p class="muted">Configure the behavior of every community module here. These settings are saved on the Railway Volume and are read by the bot.</p><div id="communityConfigGrid" class="grid"></div><div class="actions"><button id="saveCommunityConfig">Save all advanced settings</button><span id="communityConfigStatus"></span></div><p class="hint">Some actions that publish Discord messages (for example creating a ticket or verification panel) remain explicit actions; these settings control their defaults and runtime behavior.</p></div>
 </section>
 <section id="page-xp" class="page hidden"><div class="panel"><h2>XP management</h2><p class="muted">Search for a server member, check their current XP, then add or remove points manually.</p><div class="actions"><button id="xpLoadAllButton" class="secondary" type="button">Load all server members</button><span id="xpLoadAllStatus" role="status"></span></div><div class="formrow"><label class="field">Search member by username or display name<input id="xpMemberQuery" maxlength="80" placeholder="Type a member name"></label><div class="field" style="justify-content:end"><span>&nbsp;</span><button id="xpSearchButton" class="secondary">Search members</button></div></div><label class="field">Select member<select id="xpMemberSelect"><option value="">Load the member list or search first</option></select></label><div class="formrow"><label class="field">XP amount<input id="xpAmount" type="number" min="1" max="1000000" value="100"></label><label class="field">Reason (optional)<input id="xpReason" maxlength="180" placeholder="Manual adjustment"></label></div><div class="actions"><button id="xpAddButton">Add XP</button><button id="xpRemoveButton" class="danger">Remove XP</button><span id="xpStatus" role="status"></span></div><p class="hint" id="xpCurrentValue">Choose a member to view their current XP.</p></div></section><section id="page-reaction-roles" class="page hidden">
-<div class="panel"><h2>Reaction roles</h2><p class="rr-help">برای هر ایموجی یک رول انتخاب کن؛ اعضا با واکنش گرفتن رول و با برداشتن واکنش حذف رول را انجام می‌دهند.</p>
+<div class="panel"><h2>Reaction roles</h2>
 <div class="rr-builder"><label class="field">Channel<select id="reactionRoleChannel"></select></label><label class="field">Existing message ID (optional)<input id="reactionRoleMessageId" maxlength="25" placeholder="Leave empty to create new"></label></div>
 <label class="field rr-message">Message text<textarea id="reactionRoleContent" maxlength="1800" rows="2" placeholder="Choose the roles you want by reacting below."></textarea></label>
-<p class="rr-help">Message ID وارد کنی، متن پیام تغییر نمی‌کند؛ در غیر این صورت ربات پیام جدید می‌فرستد.</p>
+
 <div class="rr-tools"><b style="font-size:14px">Emoji → role</b><span class="tag" id="reactionRoleCount">0 mappings</span><span style="flex:1"></span><button id="addReactionRoleMapping" class="secondary" type="button">+ Add</button></div>
-<div><b style="font-size:13px">Server emojis</b><p class="rr-help">روی ایموجی اختصاصی سرور کلیک کن تا در ردیف انتخاب‌شده قرار بگیرد.</p><div id="reactionRoleEmojiGallery" class="rr-emoji-gallery"><span class="rr-emoji-empty">Loading server emojis…</span></div></div>
+<div><b style="font-size:13px">Server emojis</b><p class="rr-help">Click an emoji to insert it into the message or selected mapping.</p><div id="reactionRoleEmojiGallery" class="rr-emoji-gallery"><span class="rr-emoji-empty">Loading server emojis…</span></div></div>
 <div id="reactionRoleMappings" class="rr-mappings"></div>
 <div class="rr-tools"><button id="saveReactionRole">Save message</button><span id="reactionRoleStatus" role="status"></span></div>
 </div>
-<div class="panel"><h2>Configured messages</h2><div id="reactionRoleList" class="rr-list muted">No reaction-role messages configured.</div><p class="rr-help">Remove setup only stops future role changes. It does not delete the Discord message or remove roles already assigned.</p></div>
+<div class="panel"><h2>Configured messages</h2><div id="reactionRoleList" class="rr-list muted">No reaction-role messages configured.</div></div>
 </section>
 <section id="page-backup" class="page hidden">
 <div class="panel"><h2>Bot data backup</h2><p class="muted">Back up the bot's persistent text data and configuration files stored on Railway.</p><div class="stats"><div class="stat"><span class="muted">Included</span><b>JSON / TXT / CSV / LOG</b></div><div class="stat"><span class="muted">Storage</span><b>Railway Volume</b></div><div class="stat"><span class="muted">Security</span><b>Server managers</b></div></div><p class="hint" style="margin-top:14px">Includes dashboard settings, community data (XP, economy, polls, giveaways, suggestions and custom commands), warnings and other supported text files. This is not a full disk image: uploaded welcome/music artwork, audio-library files, secrets and hidden files are excluded. Individual files over 2 MB and archives over 12 MB are skipped.</p><div class="actions"><button id="downloadDataBackup">Download bot data backup</button><span id="backupStatus" role="status"></span></div><hr style="border-color:var(--line);margin:22px 0"><h2>Restore bot data</h2><p class="muted">Upload a JSON backup created by this dashboard. Matching files will be replaced; files absent from the backup are left untouched.</p><label class="field">Backup file (.json)<input id="restoreBackupFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="restoreDataBackup" class="danger">Restore bot data</button><span id="restoreStatus" role="status"></span></div><p class="hint">Only backups for this Discord server are accepted. Secrets, images, audio, Discord messages, roles and channels are not restored here.</p></div>
@@ -644,9 +644,11 @@ function options(select,channels){
 function updateWelcomeMode(){const imageMode=$('welcomeType').value==='image';$('welcomeTextFields').classList.toggle('hidden',imageMode);$('welcomeImageFields').classList.toggle('hidden',!imageMode);$('previewMessage').classList.toggle('hidden',imageMode);const hasImage=!!$('previewImage').getAttribute('src');$('previewImage').classList.toggle('hidden',!imageMode||!hasImage);$('previewImagePlaceholder').classList.toggle('hidden',!imageMode||hasImage)}
 function preview(){const msg=$('welcomeMessage').value||'Welcome {user} to {server}!';$('previewMessage').textContent=msg.replaceAll('{user}','@NewMember').replaceAll('{username}','NewMember').replaceAll('{server}',data.guild.name).replaceAll('{count}',String(data.guild.memberCount||0));$('previewServer').textContent=data.guild.name;updateWelcomeMode()}
 let activeReactionEmojiInput=null;
+let activeReactionMessageTextarea=false;
+$('reactionRoleContent').addEventListener('focus',()=>{activeReactionMessageTextarea=true;activeReactionEmojiInput=null});
 function addReactionRoleMappingRow(emojiValue='',roleValue=''){
   const row=document.createElement('div');row.className='rr-row';
-  const emoji=document.createElement('input');emoji.maxLength=100;emoji.placeholder='🎮 or custom emoji';emoji.value=emojiValue;emoji.title='Emoji';emoji.addEventListener('focus',()=>{activeReactionEmojiInput=emoji});
+  const emoji=document.createElement('input');emoji.maxLength=100;emoji.placeholder='🎮 or custom emoji';emoji.value=emojiValue;emoji.title='Emoji';emoji.addEventListener('focus',()=>{activeReactionEmojiInput=emoji;activeReactionMessageTextarea=false});
   const role=document.createElement('select');role.innerHTML='<option value="">Choose role</option>';
   for(const item of data.roles){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;role.appendChild(option)}
   role.value=roleValue;role.title='Role';
@@ -664,11 +666,20 @@ function renderReactionRoleEmojiGallery(){
     const name=document.createElement('span');name.textContent=item.name;
     button.append(img,name);
     button.onclick=()=>{
+      const code=(item.animated?'<a:':'<:')+item.name+':'+item.id+'>';
+      if(activeReactionMessageTextarea){
+        const field=$('reactionRoleContent');
+        const start=field.selectionStart??field.value.length;
+        const end=field.selectionEnd??start;
+        field.setRangeText(code,start,end,'end');
+        field.focus();
+        return;
+      }
       let target=activeReactionEmojiInput;
       if(!target||!target.isConnected){const rows=[...$('reactionRoleMappings').querySelectorAll('.rr-row input')];target=rows[rows.length-1]||null}
       if(!target){addReactionRoleMappingRow();target=$('reactionRoleMappings').lastElementChild?.querySelector('input')}
       if(!target)return;
-      target.value=(item.animated?'<a:':'<:')+item.name+':'+item.id+'>';target.focus();activeReactionEmojiInput=target;
+      target.value=code;target.focus();activeReactionEmojiInput=target;activeReactionMessageTextarea=false;
     };
     gallery.appendChild(button);
   }
