@@ -1724,7 +1724,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
       console.error('Welcome image mode is enabled, but the image file is missing.');
       return;
     }
-    await channel.send({ files: [config.imagePath] })
+    await channel.send({ files: [{ attachment: config.imagePath, name: path.basename(config.imagePath) }] })
       .catch(error => console.error('Welcome image failed:', error.message || error));
     return;
   }
