@@ -423,7 +423,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 #page-reaction-roles .panel{padding:14px}
 #page-reaction-roles h2{margin:0 0 10px;font-size:16px}
 #page-reaction-roles .rr-builder{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,260px);gap:8px;align-items:end}
-#page-reaction-roles .rr-message{margin-top:8px}
+#page-reaction-roles .rr-message{margin-top:8px}#page-reaction-roles .rr-message-editor{min-height:58px;max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;background:#0b1426;border:1px solid var(--line);border-radius:10px;color:var(--text);font:inherit;line-height:1.5;outline:none}#page-reaction-roles .rr-message-editor:focus{border-color:var(--accent);box-shadow:0 0 0 2px #7887ff22}#page-reaction-roles .rr-message-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none}#page-reaction-roles .rr-message-editor .rr-inline-emoji{display:inline-block;width:1.35em;height:1.35em;object-fit:contain;vertical-align:middle;margin:0 1px}
 #page-reaction-roles .rr-mappings{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:6px;max-height:300px;overflow:auto;padding:2px}
 #page-reaction-roles .rr-row{display:grid;grid-template-columns:60px minmax(0,1fr) 30px;gap:5px;align-items:center;padding:5px;background:#111b30;border:1px solid var(--line);border-radius:9px}
 #page-reaction-roles .rr-emoji-gallery{display:flex;gap:6px;flex-wrap:wrap;max-height:132px;overflow:auto;padding:7px;background:#111b30;border:1px solid var(--line);border-radius:9px;margin:7px 0}
@@ -610,7 +610,7 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <section id="page-xp" class="page hidden"><div class="panel"><h2>XP management</h2><p class="muted">Search for a server member, check their current XP, then add or remove points manually.</p><div class="actions"><button id="xpLoadAllButton" class="secondary" type="button">Load all server members</button><span id="xpLoadAllStatus" role="status"></span></div><div class="formrow"><label class="field">Search member by username or display name<input id="xpMemberQuery" maxlength="80" placeholder="Type a member name"></label><div class="field" style="justify-content:end"><span>&nbsp;</span><button id="xpSearchButton" class="secondary">Search members</button></div></div><label class="field">Select member<select id="xpMemberSelect"><option value="">Load the member list or search first</option></select></label><div class="formrow"><label class="field">XP amount<input id="xpAmount" type="number" min="1" max="1000000" value="100"></label><label class="field">Reason (optional)<input id="xpReason" maxlength="180" placeholder="Manual adjustment"></label></div><div class="actions"><button id="xpAddButton">Add XP</button><button id="xpRemoveButton" class="danger">Remove XP</button><span id="xpStatus" role="status"></span></div><p class="hint" id="xpCurrentValue">Choose a member to view their current XP.</p></div></section><section id="page-reaction-roles" class="page hidden">
 <div class="panel"><h2>Reaction roles</h2>
 <div class="rr-builder"><label class="field">Channel<select id="reactionRoleChannel"></select></label><label class="field">Existing message ID (optional)<input id="reactionRoleMessageId" maxlength="25" placeholder="Leave empty to create new"></label></div>
-<label class="field rr-message">Message text<textarea id="reactionRoleContent" maxlength="1800" rows="2" placeholder="Choose the roles you want by reacting below."></textarea></label>
+<label class="field rr-message">Message text<div id="reactionRoleContent" class="rr-message-editor" contenteditable="true" role="textbox" aria-label="Message text" aria-multiline="true" data-placeholder="Choose the roles you want by reacting below."></div></label>
 
 <div class="rr-tools"><b style="font-size:14px">Emoji → role</b><span class="tag" id="reactionRoleCount">0 mappings</span><span style="flex:1"></span><button id="addReactionRoleMapping" class="secondary" type="button">+ Add</button></div>
 <div><b style="font-size:13px">Server emojis</b><p class="rr-help">Click an emoji to insert it into the message or selected mapping.</p><div id="reactionRoleEmojiGallery" class="rr-emoji-gallery"><span class="rr-emoji-empty">Loading server emojis…</span></div></div>
@@ -646,6 +646,31 @@ function preview(){const msg=$('welcomeMessage').value||'Welcome {user} to {serv
 let activeReactionEmojiInput=null;
 let activeReactionMessageTextarea=false;
 $('reactionRoleContent').addEventListener('focus',()=>{activeReactionMessageTextarea=true;activeReactionEmojiInput=null});
+function reactionRoleMessageText(){
+  const root=$('reactionRoleContent');
+  function read(node){
+    if(node.nodeType===3)return node.nodeValue||'';
+    if(node.nodeType!==1)return '';
+    if(node.tagName==='IMG')return node.dataset.discordEmoji||node.alt||'';
+    if(node.tagName==='BR')return '\\n';
+    let value=[...node.childNodes].map(read).join('');
+    if((node.tagName==='DIV'||node.tagName==='P')&&node.nextSibling)value+='\\n';
+    return value;
+  }
+  return [...root.childNodes].map(read).join('').replace(/\\n+$/,'');
+}
+function insertReactionRoleEmoji(code,item){
+  const field=$('reactionRoleContent');
+  const image=document.createElement('img');
+  image.className='rr-inline-emoji';image.contentEditable='false';image.dataset.discordEmoji=code;image.alt=':'+item.name+':';image.title=':'+item.name+':';
+  image.src='https://cdn.discordapp.com/emojis/'+encodeURIComponent(item.id)+'.'+(item.animated?'gif':'png')+'?size=64&quality=lossless';
+  const selection=window.getSelection();
+  let range=null;
+  if(selection&&selection.rangeCount){const candidate=selection.getRangeAt(0);if(field.contains(candidate.commonAncestorContainer))range=candidate}
+  if(!range){range=document.createRange();range.selectNodeContents(field);range.collapse(false)}
+  range.deleteContents();range.insertNode(image);range.setStartAfter(image);range.collapse(true);
+  selection.removeAllRanges();selection.addRange(range);field.focus();
+}
 function addReactionRoleMappingRow(emojiValue='',roleValue=''){
   const row=document.createElement('div');row.className='rr-row';
   const emoji=document.createElement('input');emoji.maxLength=100;emoji.placeholder='🎮 or custom emoji';emoji.value=emojiValue;emoji.title='Emoji';emoji.addEventListener('focus',()=>{activeReactionEmojiInput=emoji;activeReactionMessageTextarea=false});
@@ -668,11 +693,7 @@ function renderReactionRoleEmojiGallery(){
     button.onclick=()=>{
       const code=(item.animated?'<a:':'<:')+item.name+':'+item.id+'>';
       if(activeReactionMessageTextarea){
-        const field=$('reactionRoleContent');
-        const start=field.selectionStart??field.value.length;
-        const end=field.selectionEnd??start;
-        field.setRangeText(code,start,end,'end');
-        field.focus();
+        insertReactionRoleEmoji(code,item);
         return;
       }
       let target=activeReactionEmojiInput;
@@ -714,9 +735,9 @@ $('saveReactionRole').onclick=async()=>{
   if(!mappings.length||mappings.some(x=>!x.emoji||!x.roleId)){status.textContent='Complete every emoji and role row first.';return}
   button.disabled=true;status.textContent='Creating reaction-role message…';
   try{
-    const result=await api('/api/reaction-roles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelId:$('reactionRoleChannel').value,messageId:$('reactionRoleMessageId').value.trim(),content:$('reactionRoleContent').value,mappings})});
+    const result=await api('/api/reaction-roles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelId:$('reactionRoleChannel').value,messageId:$('reactionRoleMessageId').value.trim(),content:reactionRoleMessageText(),mappings})});
     data.settings.reactionRoles=result.reactionRoles;renderReactionRoleList();status.textContent='Saved. Message ID: '+result.messageId;
-    $('reactionRoleMessageId').value='';$('reactionRoleContent').value='';$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();
+    $('reactionRoleMessageId').value='';$('reactionRoleContent').replaceChildren();$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();
   }catch(e){status.textContent=e.message||'Could not create reaction roles.'}
   finally{button.disabled=false}
 };
