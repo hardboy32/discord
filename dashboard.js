@@ -863,6 +863,8 @@ function renderReactionRoleList(){
       try{
         const result=await api('/api/reaction-roles/'+encodeURIComponent(messageId));
         editingReactionRoleMessageId=messageId;
+        editingReactionRoleCanEditContent=!!result.canEditContent;
+        activeReactionMessageTextarea=editingReactionRoleCanEditContent;activeReactionEmojiInput=null;
         $('reactionRoleChannel').value=result.channelId;
         $('reactionRoleChannel').disabled=true;
         $('reactionRoleMessageId').value=messageId;
@@ -917,7 +919,18 @@ $('saveReactionRole').onclick=async()=>{
       const payload={mappings};if(editingReactionRoleCanEditContent)payload.content=reactionRoleMessageText();
       const result=await api('/api/reaction-roles/'+encodeURIComponent(editingReactionRoleMessageId),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       data.settings.reactionRoles=result.reactionRoles;renderReactionRoleList();
-      status.textContent=mappings.length?'Message and role mappings updated.':'Message updated. All reaction-role mappings were removed.';
+      if(mappings.length){
+        status.textContent='Message and role mappings updated.';
+      }else{
+        editingReactionRoleMessageId='';editingReactionRoleCanEditContent=false;
+        $('reactionRoleChannel').disabled=false;$('reactionRoleMessageId').disabled=false;$('reactionRoleMessageId').value='';
+        $('reactionRoleContent').contentEditable='true';$('reactionRoleContent').classList.remove('rr-readonly');$('reactionRoleContent').replaceChildren();
+        document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=false});
+        $('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();
+        $('saveReactionRole').textContent='Save message';$('cancelReactionRoleEdit').classList.add('hidden');
+        rrEditorSavedRange=null;activeReactionEmojiInput=null;activeReactionMessageTextarea=false;
+        status.textContent='Message updated. All role mappings were removed; this message is no longer managed.';
+      }
     }catch(e){status.textContent=e.message||'Could not update this message.'}
     finally{button.disabled=false}
     return;
@@ -927,7 +940,7 @@ $('saveReactionRole').onclick=async()=>{
   try{
     const result=await api('/api/reaction-roles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelId:$('reactionRoleChannel').value,messageId:$('reactionRoleMessageId').value.trim(),content:reactionRoleMessageText(),mappings})});
     data.settings.reactionRoles=result.reactionRoles;renderReactionRoleList();status.textContent='Saved. Message ID: '+result.messageId;
-    $('reactionRoleMessageId').value='';$('reactionRoleContent').replaceChildren();$('reactionRoleMappings').replaceChildren();addReactionRoleMappingRow();editingReactionRoleMessageId='';editingReactionRoleCanEditContent=false;$('reactionRoleContent').contentEditable='true';$('reactionRoleContent').classList.remove('rr-readonly');document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=false});$('reactionRoleChannel').disabled=false;$('reactionRoleMessageId').disabled=false;$('cancelReactionRoleEdit').classList.add('hidden');button.textContent='Save message';
+    $('reactionRoleMessageId').value='';$('reactionRoleContent').replaceChildren();$('reactionRoleMappings').replaceChildren();rrEditorSavedRange=null;activeReactionEmojiInput=null;activeReactionMessageTextarea=false;addReactionRoleMappingRow();editingReactionRoleMessageId='';editingReactionRoleCanEditContent=false;$('reactionRoleContent').contentEditable='true';$('reactionRoleContent').classList.remove('rr-readonly');document.querySelectorAll('#page-reaction-roles .rr-editor-toolbar button').forEach(button=>{button.disabled=false});$('reactionRoleChannel').disabled=false;$('reactionRoleMessageId').disabled=false;$('cancelReactionRoleEdit').classList.add('hidden');button.textContent='Save message';
   }catch(e){status.textContent=e.message||'Could not create reaction roles.'}
   finally{button.disabled=false}
 };
