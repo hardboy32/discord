@@ -445,8 +445,8 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
 <label class="check"><input id="welcomeMention" type="checkbox"> Mention the new member</label>
 </div>
 <div id="welcomeImageFields" class="hidden">
-<label class="field">Welcome image (PNG, JPG or WebP)<input id="welcomeImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
-<div class="hint">Images are stored on your Railway Volume and sent as the welcome message. Maximum 5 MB.</div>
+<label class="field">Welcome image (GIF, PNG, JPG or WebP)<input id="welcomeImage" type="file" accept="image/gif,image/png,image/jpeg,image/webp,.gif,.png,.jpg,.jpeg,.webp"></label>
+<div class="hint">Images and animated GIFs are stored on your Railway Volume and sent as the welcome message. Maximum 8 MB.</div>
 </div>
 <label class="check"><input id="welcomeEnabled" type="checkbox"> Enable welcome messages</label>
 </div><div><div class="eyebrow" style="margin-bottom:9px">Live preview</div><div class="preview"><b id="previewServer">Your server</b><div id="previewMessage" style="margin-top:12px">Welcome @NewMember to Your server!</div><div id="previewImagePlaceholder" class="hint hidden" style="margin-top:12px">Choose an image to see the image welcome preview.</div><img id="previewImage" class="hidden" alt="Welcome image preview"></div><div class="hint" style="margin-top:12px">The preview uses sample member data. Discord formatting may look slightly different.</div></div></div><div class="actions"><button id="saveWelcome">Save welcome settings</button><span id="welcomeStatus"></span></div></div><div class="panel"><h2>Goodbye message</h2><p class="muted">Send a custom message when a member leaves.</p><label class="check"><input id="goodbyeEnabled" type="checkbox"> Enable goodbye messages</label><label class="field">Send to channel<select id="goodbyeChannel"></select></label><label class="field">Message<textarea id="goodbyeMessage" maxlength="1000" placeholder="Goodbye {user}!"></textarea></label><p class="hint">Placeholders: {user}, {username}, {server}, {count}. Mentions are disabled in goodbye messages.</p><button id="saveGoodbye">Save goodbye settings</button> <span id="goodbyeStatus"></span></div></section>
@@ -665,7 +665,7 @@ async function deleteSavedLibraryTrack(id,button){if(!confirm('Permanently delet
 async function playDashboardMusicUrl(url,button){const status=$('musicStatus');const voiceChannelId=$('musicVoiceChannel').value;if(!voiceChannelId){status.textContent='Choose a voice channel first.';return}if(!url){status.textContent='Paste a music/video page or direct audio link first.';return}button.disabled=true;status.textContent='Resolving link and connecting to voice channel…';try{const result=await api('/api/music/play',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({voiceChannelId,url})});status.textContent='Added "'+result.title+'" to #'+result.channelName+'. Queue position: '+result.position+'.';saveMusicHistory(result.title||url,url)}catch(e){status.textContent=e.message||'Could not start playback.'}finally{button.disabled=false}}
 $('playDashboardMusic').onclick=()=>playDashboardMusicUrl($('musicUrl').value.trim(),$('playDashboardMusic'));
 renderMusicHistory();
-$('welcomeType').addEventListener('change',updateWelcomeMode);$('welcomeMessage').addEventListener('input',preview);$('welcomeImage').addEventListener('change',()=>{const file=$('welcomeImage').files[0];if(!file)return;if(file.size>5*1024*1024){alert('Image must be 5 MB or smaller.');$('welcomeImage').value='';return}const reader=new FileReader();reader.onload=()=>{imageData=reader.result;$('previewImage').src=imageData;updateWelcomeMode()};reader.readAsDataURL(file)});
+$('welcomeType').addEventListener('change',updateWelcomeMode);$('welcomeMessage').addEventListener('input',preview);$('welcomeImage').addEventListener('change',()=>{const file=$('welcomeImage').files[0];if(!file)return;const allowedTypes=['image/gif','image/png','image/jpeg','image/webp'];if(file.size>8*1024*1024){alert('Image or GIF must be 8 MB or smaller.');$('welcomeImage').value='';return}if(!allowedTypes.includes(file.type)){alert('Choose a GIF, PNG, JPG or WebP image.');$('welcomeImage').value='';return}const reader=new FileReader();reader.onload=()=>{imageData=reader.result;$('previewImage').src=imageData;updateWelcomeMode()};reader.readAsDataURL(file)});
 $('saveWelcome').onclick=async()=>{const status=$('welcomeStatus');status.textContent='Saving…';try{const mode=$('welcomeType').value;if(mode==='image'&&imageData){await api('/api/welcome-image',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({data:imageData})});imageData=''}await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({welcome:{enabled:$('welcomeEnabled').checked,channelId:$('welcomeChannel').value,message:$('welcomeMessage').value,type:mode,mention:$('welcomeMention').checked}})});status.textContent='Saved successfully.';await load()}catch(e){status.textContent=e.message}};
 $('saveGoodbye').onclick=async()=>{const status=$('goodbyeStatus');status.textContent='Saving…';try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({goodbye:{enabled:$('goodbyeEnabled').checked,channelId:$('goodbyeChannel').value,message:$('goodbyeMessage').value}})});status.textContent='Saved successfully.'}catch(e){status.textContent=e.message}};
 $('selectAllLogs').onclick=()=>LOG_EVENT_KEYS.forEach(key=>{const input=$('log_'+key);if(input)input.checked=true;});
@@ -765,7 +765,7 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         if (!imagePath.startsWith(imageRoot) || !fs.existsSync(imagePath) || !fs.statSync(imagePath).isFile()) {
           return send(res, 404, 'Not found', 'text/plain');
         }
-        const types = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
+        const types = { '.gif': 'image/gif', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
         const type = types[path.extname(imagePath).toLowerCase()];
         if (!type) return send(res, 404, 'Not found', 'text/plain');
         res.writeHead(200, {
@@ -1058,12 +1058,18 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
         }
         if (req.method === 'PUT' && url.pathname === '/api/welcome-image') {
           if (!await authorizeManager()) return send(res, 403, { error: 'Server management permission required.' });
-          const body = await readBody(req, 7 * 1024 * 1024);
-          const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ''));
-          if (!match) return send(res, 400, { error: 'Upload a PNG, JPG or WebP image.' });
+          const body = await readBody(req, 12 * 1024 * 1024);
+          const match = /^data:image\/(gif|png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.data || ''));
+          if (!match) return send(res, 400, { error: 'Upload a GIF, PNG, JPG or WebP image.' });
           const bytes = Buffer.from(match[2], 'base64');
-          if (!bytes.length || bytes.length > 5 * 1024 * 1024) return send(res, 400, { error: 'Image must be 5 MB or smaller.' });
-          const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+          if (!bytes.length || bytes.length > 8 * 1024 * 1024) return send(res, 400, { error: 'Image or GIF must be 8 MB or smaller.' });
+          const format = match[1];
+          const validSignature = format === 'gif' ? ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii')) :
+            format === 'png' ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) :
+            format === 'jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff :
+            format === 'webp' ? bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP' : false;
+          if (!validSignature) return send(res, 400, { error: 'The selected file does not match a supported image format.' });
+          const ext = format === 'jpeg' ? 'jpg' : format;
           const imageDir = path.join(path.dirname(SETTINGS_FILE), 'welcome-assets');
           fs.mkdirSync(imageDir, { recursive: true });
           const imagePath = path.join(imageDir, 'welcome.' + ext);
