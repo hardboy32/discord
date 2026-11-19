@@ -33,11 +33,14 @@ When a track starts, the bot posts or updates one music player message in the te
 
 - `/daily`, `/work`, `/balance`, `/pay`, `/shop`, and `/buy` — persistent coins, daily rewards, work earnings, transfers, and a simple role shop.
 - `/custom-set`, `/custom-run`, and `/custom-delete` — save reusable server responses.
-- `/server-backup` — export role and channel structure as JSON.
-- `/server-restore` — recreate missing roles and channels from that JSON (does not restore messages, member assignments, category nesting, or permission overwrites).
 - `/invites` and `/invite-leaderboard` — track invite attribution and show inviter rankings (the bot needs Manage Server permission to fetch invites).
 - `/stream-alert-setup` — monitor Twitch, YouTube, and Kick creators and post live alerts in a selected channel. Add `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` for Twitch, and `YOUTUBE_API_KEY` for YouTube; Kick uses a public endpoint that may change.
 - Community configuration, votes, giveaway entries, and XP are stored in `/app/data/community-data.json` (keep the Railway Volume mounted at `/app/data`).
+
+### Server backup commands
+- `/server-backup` — export role and channel structure as JSON.
+- `/server-restore` — recreate missing roles and channels from that JSON (does not restore messages, member assignments, category nesting, or permission overwrites).
+- The dashboard's **Data Backup** page contains the switch for enabling or pausing these slash commands, plus separate controls for bot-data and server-structure backups.
 
 ### Support tickets
 - Run `/ticket-setup` with a panel channel, staff role, and transcript channel (optional category).
