@@ -8,6 +8,7 @@ const logDebug = (...args) => {
 
 const fs = require('node:fs');
 const os = require('node:os');
+const v8 = require('node:v8');
 const path = require('node:path');
 const {
   ActionRowBuilder,
@@ -124,6 +125,7 @@ async function getRuntimeMonitoring() {
     nodeRss: memory.rss,
     nodeHeapUsed: memory.heapUsed,
     nodeHeapTotal: memory.heapTotal,
+    nodeHeapLimit: v8.getHeapStatistics().heap_size_limit,
     nodeCpuPercent,
     containerMemoryUsed: Number.isFinite(containerMemoryUsed) && containerMemoryUsed > 0 ? containerMemoryUsed : null,
     containerMemoryLimit: Number.isFinite(containerMemoryLimit) && containerMemoryLimit > 0 && containerMemoryLimit < 1e15 ? containerMemoryLimit : null,
