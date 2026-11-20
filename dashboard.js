@@ -506,6 +506,13 @@ h1,h2,p,label,code,.muted,.hint{overflow-wrap:anywhere}
   #page-xp .xp-search-row{grid-template-columns:minmax(0,1fr)}
   #page-xp .xp-search-row button{width:100%}
 }
+
+/* Overview layout: keep the summary cards and runtime panel clearly separated. */
+#page-overview{display:flex;flex-direction:column;align-items:stretch;gap:18px}
+#page-overview>.stats,#page-overview>#runtimeMonitor{width:100%;min-width:0;margin:0}
+#runtimeMonitor .stats{gap:14px}
+#runtimeMonitor .stat{min-width:0;min-height:104px;display:flex;flex-direction:column;justify-content:center}
+#runtimeMonitor .stat b,#runtimeMonitor .stat small{max-width:100%;overflow-wrap:anywhere;word-break:break-word}
 </style></head><body><section id="login" class="panel login hidden"><div class="brand">HARD<span>BOY</span> CONTROL</div><h1>Server dashboard</h1><p class="muted">Sign in with an account that has server administration permissions.</p><a href="/auth/login"><button>Continue with Discord</button></a></section>
 <div id="app" class="shell hidden"><aside class="side"><div class="brand">HARD<span>BOY</span> CONTROL</div><nav class="nav">
 <button class="active" data-page="overview">◈ Overview</button><button data-page="welcome">✦ Welcome</button><button data-page="music">♫ Music</button><button data-page="commands">⌘ Commands</button><button data-page="moderation">⛨ Moderation</button><button data-page="logs">☷ Server Logs</button><button data-page="autorole">⚙ Automatic roles on join</button><button data-page="ai">✦ AI settings</button><button data-page="activity">◉ Activity</button><button data-page="birthdays">🎂 Birthdays</button><button data-page="community">✧ Community</button><button data-page="xp">🏆 XP management</button><button data-page="reaction-roles">🎭 Reaction roles</button><button data-page="backup">⬇ Data backup</button>
