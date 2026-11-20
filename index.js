@@ -7,6 +7,7 @@ const logDebug = (...args) => {
 };
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const {
   ActionRowBuilder,
@@ -87,6 +88,48 @@ const { Shoukaku, Connectors } = require('shoukaku');
 const LAVALINK_HOST = '127.0.0.1';
 const LAVALINK_PORT = 2333;
 const LAVALINK_PASSWORD = (process.env.LAVALINK_PASSWORD || '').trim();
+let lastRuntimeCpuSample = { at: Date.now(), usage: process.cpuUsage() };
+async function getRuntimeMonitoring() {
+  const now = Date.now();
+  const usage = process.cpuUsage();
+  const elapsedMs = Math.max(1, now - lastRuntimeCpuSample.at);
+  const cpuDelta = process.cpuUsage(lastRuntimeCpuSample.usage);
+  lastRuntimeCpuSample = { at: now, usage };
+  const nodeCpuPercent = Math.min(200, Math.max(0, ((cpuDelta.user + cpuDelta.system) / (elapsedMs * 1000 * Math.max(1, os.availableParallelism ? os.availableParallelism() : os.cpus().length))) * 100));
+  const memory = process.memoryUsage();
+  let containerMemoryUsed = null;
+  let containerMemoryLimit = null;
+  try { containerMemoryUsed = Number(fs.readFileSync('/sys/fs/cgroup/memory.current', 'utf8').trim()); } catch {}
+  try { containerMemoryLimit = Number(fs.readFileSync('/sys/fs/cgroup/memory.max', 'utf8').trim()); if (!Number.isFinite(containerMemoryLimit)) containerMemoryLimit = null; } catch {}
+  let lavalink = null;
+  try {
+    const response = await fetch('http://' + LAVALINK_HOST + ':' + LAVALINK_PORT + '/v4/stats', {
+      headers: { Authorization: LAVALINK_PASSWORD },
+      signal: AbortSignal.timeout(1800),
+    });
+    if (response.ok) {
+      const stats = await response.json();
+      lavalink = {
+        memoryUsed: Number(stats.memory && stats.memory.used) || 0,
+        memoryAllocated: Number(stats.memory && stats.memory.allocated) || 0,
+        players: Number(stats.players) || 0,
+        playingPlayers: Number(stats.playingPlayers) || 0,
+        cpuLoad: Number(stats.cpu && stats.cpu.lavalinkLoad) || 0,
+      };
+    }
+  } catch {}
+  return {
+    sampledAt: now,
+    uptimeSeconds: process.uptime(),
+    nodeRss: memory.rss,
+    nodeHeapUsed: memory.heapUsed,
+    nodeHeapTotal: memory.heapTotal,
+    nodeCpuPercent,
+    containerMemoryUsed: Number.isFinite(containerMemoryUsed) && containerMemoryUsed > 0 ? containerMemoryUsed : null,
+    containerMemoryLimit: Number.isFinite(containerMemoryLimit) && containerMemoryLimit > 0 && containerMemoryLimit < 1e15 ? containerMemoryLimit : null,
+    lavalink,
+  };
+}
 const shoukaku = new Shoukaku(
   new Connectors.DiscordJS(client),
   [{
@@ -2076,7 +2119,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Runtime process ID:', process.pid);
   logDebug('Logged in as ' + readyClient.user.tag);
-  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome));
+  startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome), getRuntimeMonitoring);
   startMusicRequestCleanupScheduler(readyClient);
   logDebug('AI providers configured: ' + [GEMINI_API_KEY ? 'Gemini (' + GEMINI_MODEL + ')' : null, GROQ_API_KEY ? 'Groq (' + GROQ_MODEL + ')' : null, CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN ? 'Cloudflare Workers AI (' + CLOUDFLARE_CHAT_MODEL + ')' : null].filter(Boolean).join(', ') + (GEMINI_API_KEY || GROQ_API_KEY || (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN) ? '.' : 'None. Add the required AI API variables in Railway Variables.'));
   applySavedBotPresence(readyClient);
