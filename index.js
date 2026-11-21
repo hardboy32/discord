@@ -708,7 +708,8 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
   lavalinkPlayer.on('update', data => {
     if (queue.lavalinkPlayer === lavalinkPlayer && data && data.state) {
       queue.lavalinkPosition = Number(data.state.position || 0);
-      const voicePing = Number(data.state.ping);
+      const rawVoicePing = data.state.ping;
+      const voicePing = rawVoicePing === null || rawVoicePing === undefined ? NaN : Number(rawVoicePing);
       queue.lavalinkPing = Number.isFinite(voicePing) && voicePing >= 0 ? voicePing : null;
       queue.lavalinkVoiceConnected = data.state.connected === true;
       queue.lastLavalinkUpdateAt = Date.now();
@@ -1060,6 +1061,9 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     queue.voiceChannelId = null;
     queue.connection = null;
     queue.lavalinkPlayer = null;
+    queue.lavalinkPing = null;
+    queue.lavalinkVoiceConnected = false;
+    queue.lastLavalinkUpdateAt = null;
     queue.current = null;
     queue.tracks = [];
     queue.starting = false;
