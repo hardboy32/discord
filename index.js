@@ -792,6 +792,65 @@ async function searchTrackCandidates(query, requestedBy) {
   return candidates.slice(0, 10);
 }
 
+function normalizeMusicRequestUrl(input) {
+  let value = String(input || '').trim();
+  if (value.startsWith('<') && value.endsWith('>')) {
+    value = value.slice(1, -1).trim();
+  }
+  value = value.replace(/[),.!?؟]+$/u, '');
+  if (!/^https?:\/\//i.test(value)) return null;
+
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const supported = host === 'youtu.be' ||
+      host === 'youtube.com' || host.endsWith('.youtube.com') ||
+      host === 'youtube-nocookie.com' || host.endsWith('.youtube-nocookie.com') ||
+      host === 'soundcloud.com' || host.endsWith('.soundcloud.com') ||
+      host === 'snd.sc';
+    return supported ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function enqueueDirectMusicUrl(message, url) {
+  const member = await message.guild.members.fetch(message.author.id);
+  if (!member.voice.channel) {
+    return { error: 'Join a voice channel first, then send the music link again.' };
+  }
+
+  // Resolve the exact URL as supplied. Playlist responses become a list of
+  // tracks here; they are queued directly without invoking title search.
+  const resolvedTracks = await resolveLavalinkTracks(
+    url,
+    message.author.tag || message.author.username,
+    url,
+    ''
+  );
+  if (!resolvedTracks.length) {
+    return { error: 'No playable tracks were found at that link. Check that the video or playlist is public and try again.' };
+  }
+
+  // Keep a single request from filling the queue indefinitely.
+  const maxTracksPerPlaylistRequest = 100;
+  const tracks = resolvedTracks.slice(0, maxTracksPerPlaylistRequest);
+  const queue = getQueue(message.guildId);
+  await connectVoice(message.guild, member.voice.channel, queue);
+  queue.textChannelId = message.channelId;
+
+  const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
+  queue.tracks.push(...tracks);
+  if (!queue.current) void playNext(message.guildId);
+
+  return {
+    tracks,
+    position,
+    totalTracks: resolvedTracks.length,
+    truncated: resolvedTracks.length > tracks.length,
+  };
+}
+
 async function sendMusicSearchChoices(message, query) {
   const candidates = await searchTrackCandidates(query, message.author.tag || message.author.username);
   if (!candidates.length) {
@@ -1875,6 +1934,39 @@ client.on(Events.MessageCreate, async (message) => {
       } catch (cleanupError) {
         console.warn('Could not remove previous music request messages. Check Manage Messages permission:', cleanupError.message || cleanupError);
       }
+      const directUrl = normalizeMusicRequestUrl(query);
+      if (directUrl) {
+        const result = await enqueueDirectMusicUrl(message, directUrl);
+        if (result.error) {
+          await message.reply({
+            content: result.error,
+            allowedMentions: { repliedUser: false },
+          });
+          return;
+        }
+
+        if (result.tracks.length > 1 || result.totalTracks > 1) {
+          const firstTrack = result.tracks[0];
+          const playlistMessage =
+            '🎶 Direct playlist link detected. Added **' + result.tracks.length +
+            '** tracks to the queue. First track: **' + String(firstTrack.title || 'Unknown track').slice(0, 140) +
+            '**. Queue starts at position ' + result.position + '.' +
+            (result.truncated ? '\\n⚠️ This playlist is large, so only the first 100 tracks were added.' : '');
+          await message.reply({
+            content: playlistMessage,
+            allowedMentions: { repliedUser: false },
+          });
+        } else {
+          const track = result.tracks[0];
+          await message.reply({
+            content: '🎵 Direct link detected. Queued **' + String(track.title || 'Unknown track').slice(0, 160) +
+              '**. Queue position: ' + result.position + '.',
+            allowedMentions: { repliedUser: false },
+          });
+        }
+        return;
+      }
+
       await sendMusicSearchChoices(message, query);
     } catch (musicError) {
       console.error('Music request channel failed:', musicError.stack || musicError);
