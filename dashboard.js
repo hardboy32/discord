@@ -1217,40 +1217,93 @@ setTimeout(refreshRuntimeMonitor, 2500);
 }
 
 function getPersianCalendarDate(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', { timeZone: 'Asia/Tehran', year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(date);
-  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]));
+  const parts = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', {
+    timeZone: 'Asia/Tehran',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)])
+  );
+  if (!Number.isInteger(values.year) || !Number.isInteger(values.month) || !Number.isInteger(values.day)) {
+    throw new Error('Could not determine the current Persian calendar date for Asia/Tehran.');
+  }
   return { year: values.year, month: values.month, day: values.day };
 }
+
 let birthdayReminderTimer = null;
+let birthdayReminderCheckRunning = false;
+
 function startBirthdayReminderScheduler(client) {
   if (birthdayReminderTimer) return;
   let ownerWarningShown = false;
+
   const check = async () => {
-    const today = getPersianCalendarDate();
-    for (const birthday of Array.isArray(settings.birthdays) ? settings.birthdays : []) {
-      if (Number(birthday.month) !== today.month || Number(birthday.day) !== today.day || Number(birthday.lastNotifiedYear) === today.year) continue;
-      const recipientId = String(birthday.notifyUserId || BIRTHDAY_OWNER_ID || '').trim();
-      if (!recipientId) {
-        if (!ownerWarningShown) console.warn('Birthday reminders are saved without a notification recipient; re-save them from the dashboard or set BOT_OWNER_ID in Railway Variables.');
-        ownerWarningShown = true;
-        return;
-      }
-      try {
-        const owner = await client.users.fetch(recipientId);
+    if (birthdayReminderCheckRunning) return;
+    birthdayReminderCheckRunning = true;
+    try {
+      const today = getPersianCalendarDate();
+      const birthdays = Array.isArray(settings.birthdays) ? settings.birthdays : [];
+      let matchingToday = 0;
+
+      for (const birthday of birthdays) {
+        if (!birthday || Number(birthday.month) !== today.month ||
+            Number(birthday.day) !== today.day ||
+            Number(birthday.lastNotifiedYear) === today.year) continue;
+
+        matchingToday += 1;
+        const recipientId = String(birthday.notifyUserId || BIRTHDAY_OWNER_ID || '').trim();
+        if (!/^\d{17,20}$/.test(recipientId)) {
+          if (!ownerWarningShown) {
+            console.warn('A birthday matching today has no valid notification recipient. Re-save that birthday from the dashboard or set BOT_OWNER_ID in Railway Variables. Other birthdays will still be checked.');
+            ownerWarningShown = true;
+          }
+          continue;
+        }
+
         const memberName = String(birthday.name || birthday.displayName || birthday.username || 'Someone').slice(0, 100);
-        await owner.send({ content: '🎂 **Today is ' + memberName + "'s birthday!**\nPersian date: " + today.day + '/' + today.month + '/' + today.year + (birthday.userId ? '\nDiscord member: <@' + birthday.userId + '>' : ''), allowedMentions: { users: [] } });
-        birthday.lastNotifiedYear = today.year;
-        saveSettings();
-        console.log('Birthday reminder sent for ' + (birthday.name || birthday.userId || 'contact') + ' (' + today.day + '/' + today.month + '/' + today.year + ').');
-      } catch (error) {
-        console.warn('Birthday reminder DM failed for member ' + birthday.userId + ':', error.message || error);
+        try {
+          const recipient = await client.users.fetch(recipientId);
+          await recipient.send({
+            content: '🎂 **Today is ' + memberName + "'s birthday!**\\nPersian date: " +
+              today.day + '/' + today.month + '/' + today.year +
+              (birthday.userId ? '\\nDiscord member: <@' + birthday.userId + '>' : ''),
+            allowedMentions: { parse: [] },
+          });
+          birthday.lastNotifiedYear = today.year;
+          saveSettings();
+          console.log('Birthday reminder sent for ' + memberName + ' (' + today.day + '/' + today.month + '/' + today.year + ').');
+        } catch (error) {
+          const code = String(error.code || error.rawError?.code || 'unknown');
+          console.warn('Birthday reminder DM failed for "' + memberName + '" (Discord error ' + code + '):', error.message || error);
+        }
       }
+
+      if (matchingToday > 0) {
+        console.log('Birthday check complete: ' + matchingToday + ' due reminder(s) for Persian date ' +
+          today.day + '/' + today.month + '/' + today.year + ' (Asia/Tehran).');
+      }
+    } finally {
+      birthdayReminderCheckRunning = false;
     }
   };
+
   void check().catch(error => console.error('Birthday reminder check failed:', error.stack || error));
-  birthdayReminderTimer = setInterval(() => void check().catch(error => console.error('Birthday reminder check failed:', error.stack || error)), 5 * 60 * 1000);
+  birthdayReminderTimer = setInterval(
+    () => void check().catch(error => console.error('Birthday reminder check failed:', error.stack || error)),
+    60 * 1000
+  );
   if (typeof birthdayReminderTimer.unref === 'function') birthdayReminderTimer.unref();
-  console.log('Solar Hijri birthday reminder scheduler started (Asia/Tehran).');
+
+  try {
+    const today = getPersianCalendarDate();
+    console.log('Solar Hijri birthday reminder scheduler started (Asia/Tehran). Current date: ' +
+      today.day + '/' + today.month + '/' + today.year + '. Saved birthdays: ' +
+      (Array.isArray(settings.birthdays) ? settings.birthdays.length : 0) + '.');
+  } catch (error) {
+    console.error('Birthday scheduler could not read the Persian calendar date:', error.message || error);
+  }
 }
 
 function normalizeBotActivity(input, current = defaults.activity) {
@@ -2072,7 +2125,35 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
           saveSettings();
           return send(res, 200, { ok: true });
         }
-        if (req.method === 'POST' && url.pathname === '/api/birthdays/test') { if (!await authorizeManager()) return send(res,403,{error:'Server management permission required.'}); try { const recipient=await client.users.fetch(session.user.id); await recipient.send({content:'🧪 **HARD BOT birthday reminder test**\nThe test was successful. Your birthday reminders are able to reach this Discord account by direct message.',allowedMentions:{parse:[]}}); return send(res,200,{ok:true,message:'Test reminder sent by DM.'}); } catch(error) { const code=String(error.code||error.rawError?.code||''); console.warn('Birthday test DM failed:',{code,status:error.status,message:error.message||String(error)}); let message='Could not send the test DM.'; if(code==='50007') message='Discord blocked this DM (error 50007). Enable Direct Messages from server members for the server HARD BOT shares with you, and make sure you have not blocked the bot.'; else if(code==='10013') message='Discord could not find the account used for this dashboard session. Sign out and sign in again.'; else if(code==='50001'||code==='50013') message='The bot does not have access needed to send this DM. Check that it is online and still shares a server with your account.'; else message+=' Discord error '+(code||'unknown')+': '+String(error.message||'No details returned.'); return send(res,400,{error:message,code:code||null}); } }
+        if (req.method === 'POST' && url.pathname === '/api/birthdays/test') {
+          if (!await authorizeManager()) return send(res,403,{error:'Server management permission required.'});
+          try {
+            const recipient = await client.users.fetch(session.user.id);
+            const today = getPersianCalendarDate();
+            const birthdays = Array.isArray(settings.birthdays) ? settings.birthdays : [];
+            const matchingToday = birthdays.filter(item =>
+              item && Number(item.month) === today.month && Number(item.day) === today.day &&
+              Number(item.lastNotifiedYear) !== today.year
+            ).length;
+            const dateLabel = today.day + '/' + today.month + '/' + today.year;
+            const diagnostic = 'Current Persian date (Asia/Tehran): ' + dateLabel +
+              '. Saved birthdays: ' + birthdays.length + '. Matching today: ' + matchingToday + '.';
+            await recipient.send({
+              content: '🧪 **HARD BOT birthday reminder test**\\nThe test was successful. Your birthday reminders can reach this Discord account by direct message.\\n' + diagnostic,
+              allowedMentions: { parse: [] },
+            });
+            return send(res,200,{ok:true,message:'Test DM sent. ' + diagnostic});
+          } catch(error) {
+            const code=String(error.code||error.rawError?.code||'');
+            console.warn('Birthday test DM failed:',{code,status:error.status,message:error.message||String(error)});
+            let message='Could not send the test DM.';
+            if(code==='50007') message='Discord blocked this DM (error 50007). Enable Direct Messages from server members for the server HARD BOT shares with you, and make sure you have not blocked the bot.';
+            else if(code==='10013') message='Discord could not find the account used for this dashboard session. Sign out and sign in again.';
+            else if(code==='50001'||code==='50013') message='The bot does not have access needed to send this DM. Check that it is online and still shares a server with your account.';
+            else message+=' Discord error '+(code||'unknown')+': '+String(error.message||'No details returned.');
+            return send(res,400,{error:message,code:code||null});
+          }
+        }
         if (req.method === 'GET' && url.pathname === '/api/birthdays') { if (!await authorizeManager()) return send(res,403,{error:'Server management permission required.'}); return send(res,200,{birthdays:Array.isArray(settings.birthdays)?settings.birthdays:[]}); }
         if (req.method === 'POST' && url.pathname === '/api/birthdays') { if (!await authorizeManager()) return send(res,403,{error:'Server management permission required.'}); const body=await readBody(req,5000); const name=String(body.name||'').trim().slice(0,80); const userId=String(body.userId||'').trim(); const month=Number(body.month); const day=Number(body.day); if(!name||!Number.isInteger(month)||month<1||month>12||!Number.isInteger(day)||day<1||day>(month<=6?31:month<=11?30:30)|| (userId&&!/^\d{17,20}$/.test(userId))) return send(res,400,{error:'Enter a name and a valid Persian month/day.'}); let member=null; if(userId){member=await liveGuild.members.fetch(userId).catch(()=>null);if(!member||member.user.bot)return send(res,404,{error:'Linked human server member not found.'});} settings.birthdays=Array.isArray(settings.birthdays)?settings.birthdays:[]; const recordId=String(body.id||'').trim(); const existing=recordId?settings.birthdays.find(item=>(item.id||item.userId)===recordId):null; if(recordId&&!existing)return send(res,404,{error:'Birthday record not found.'}); const id=existing?.id||existing?.userId||require('crypto').randomUUID(); const record={id,name,userId:userId||null,displayName:member?.displayName||null,username:member?.user.username||null,month,day,notifyUserId:existing?.notifyUserId||session.user.id,lastNotifiedYear:existing?.lastNotifiedYear||null}; settings.birthdays=existing?settings.birthdays.map(item=>(item.id||item.userId)===id?record:item):settings.birthdays.concat(record); settings.birthdays.sort((a,b)=>a.month-b.month||a.day-b.day||String(a.name).localeCompare(String(b.name))); saveSettings(); return send(res,200,{ok:true,birthdays:settings.birthdays}); }
         if (req.method === 'DELETE' && url.pathname.startsWith('/api/birthdays/')) { if (!await authorizeManager()) return send(res,403,{error:'Server management permission required.'}); const recordId=decodeURIComponent(url.pathname.slice('/api/birthdays/'.length)); const before=(settings.birthdays||[]).length; settings.birthdays=(settings.birthdays||[]).filter(item=>(item.id||item.userId)!==recordId); saveSettings(); return send(res,200,{ok:true,removed:before-settings.birthdays.length,birthdays:settings.birthdays}); }
