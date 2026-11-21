@@ -1951,7 +1951,7 @@ client.on(Events.MessageCreate, async (message) => {
             '🎶 Direct playlist link detected. Added **' + result.tracks.length +
             '** tracks to the queue. First track: **' + String(firstTrack.title || 'Unknown track').slice(0, 140) +
             '**. Queue starts at position ' + result.position + '.' +
-            (result.truncated ? '\\n⚠️ This playlist is large, so only the first 100 tracks were added.' : '');
+            (result.truncated ? '\n⚠️ This playlist is large, so only the first 100 tracks were added.' : '');
           await message.reply({
             content: playlistMessage,
             allowedMentions: { repliedUser: false },
