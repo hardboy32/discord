@@ -2635,7 +2635,7 @@ function getManagedChannelTopicDescriptions(guild) {
     }
   }
   if (music.enabled !== false && music.requestChannelId) {
-    add(music.requestChannelId, '🎵 Music Requests: Send a YouTube or SoundCloud link, or search by song name. Playback controls and the Local Music library are available in the player panel here.');
+    add(music.requestChannelId, '🎵 Music Requests: Send a YouTube or SoundCloud link, or search by song name. Type لوکال in this channel to browse saved local audio files.');
   }
   if (ai.enabled !== false && ai.chatChannelId) {
     add(ai.chatChannelId, '💬 AI Chat: Send a message here and the bot will reply using the selected AI provider.');
