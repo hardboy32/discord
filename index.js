@@ -1559,7 +1559,8 @@ async function showLocalMusicPicker(interaction, page = 0, update = false) {
     return update ? interaction.update(payload) : interaction.reply(payload);
   }
   const settings = getDashboardSettings(interaction.guildId);
-  if (!settings.music.enabled) {
+  const musicSettings = settings && settings.music ? settings.music : {};
+  if (!musicSettings.enabled) {
     const payload = { content: 'Music is currently disabled by the server administrator.', flags: MessageFlags.Ephemeral };
     return update ? interaction.update(payload) : interaction.reply(payload);
   }
@@ -1602,7 +1603,7 @@ async function handleLocalMusicSelection(interaction) {
   );
   return interaction.editReply({
     content: '🎵 Added **' + String(result.track.title || savedTrack.title).slice(0, 160) +
-      '** to the queue. Voice channel: <#' + result.channelName + '>. Queue position: ' + result.position + '.',
+      '** to the queue in #' + result.channelName + '. Queue position: ' + result.position + '.',
     components: [],
   });
 }
@@ -1637,6 +1638,7 @@ async function handleMusicButton(interaction) {
       queue.tracks = [];
       queue.current = null;
       queue.player.stop(true);
+      if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
       return interaction.reply({ content: 'Playback stopped and the queue was cleared.', flags: MessageFlags.Ephemeral });
     case 'music:loop':
       queue.loopMode = queue.loopMode === 'off' ? 'track' : queue.loopMode === 'track' ? 'queue' : 'off';
@@ -2646,6 +2648,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
+        if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
         return respond(interaction, 'Playback stopped and the queue was cleared.');
       }
 
@@ -2665,6 +2668,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.voiceChannelId = null;
         queue.player.state.status = AudioPlayerStatus.Idle;
         queue.lavalinkPosition = 0;
+        if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
         return respond(interaction, 'Left the voice channel.');
       }
 
