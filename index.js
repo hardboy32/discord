@@ -2784,6 +2784,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome), getRuntimeMonitoring);
   startMusicRequestCleanupScheduler(readyClient);
+  startManagedChannelTopicSync(readyClient);
   await initializeMusicRequestPanels(readyClient);
   logDebug('AI providers configured: ' + [GEMINI_API_KEY ? 'Gemini (' + GEMINI_MODEL + ')' : null, GROQ_API_KEY ? 'Groq (' + GROQ_MODEL + ')' : null, CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN ? 'Cloudflare Workers AI (' + CLOUDFLARE_CHAT_MODEL + ')' : null].filter(Boolean).join(', ') + (GEMINI_API_KEY || GROQ_API_KEY || (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN) ? '.' : 'None. Add the required AI API variables in Railway Variables.'));
   applySavedBotPresence(readyClient);
