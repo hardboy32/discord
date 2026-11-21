@@ -26,6 +26,7 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
 } = require('discord.js');
 const AudioPlayerStatus = Object.freeze({
   Idle: 'idle',
@@ -814,6 +815,18 @@ function normalizeMusicRequestUrl(input) {
   }
 }
 
+async function sendTemporaryMusicNotice(message, content, delayMs = 10000) {
+  const notice = await message.reply({
+    content,
+    allowedMentions: { repliedUser: false },
+  });
+  const timer = setTimeout(() => {
+    void notice.delete().catch(() => {});
+  }, delayMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  return notice;
+}
+
 async function enqueueDirectMusicUrl(message, url) {
   const member = await message.guild.members.fetch(message.author.id);
   if (!member.voice.channel) {
@@ -838,6 +851,7 @@ async function enqueueDirectMusicUrl(message, url) {
   const queue = getQueue(message.guildId);
   await connectVoice(message.guild, member.voice.channel, queue);
   queue.textChannelId = message.channelId;
+  await routeDashboardMusicPanel(queue, message.guild);
 
   const position = queue.tracks.length + (queue.current ? 1 : 0) + 1;
   queue.tracks.push(...tracks);
@@ -928,6 +942,7 @@ async function handleMusicSearchSelection(interaction) {
   const queue = getQueue(interaction.guildId);
   await connectVoice(interaction.guild, member.voice.channel, queue);
   queue.textChannelId = interaction.channelId;
+  await routeDashboardMusicPanel(queue, interaction.guild);
   const position = queue.tracks.length + (queue.current ? 1 : 0);
   queue.tracks.push(track);
   if (!queue.current) void playNext(interaction.guildId);
@@ -1074,6 +1089,30 @@ async function connectVoice(guild, channel, queue) {
 
 const MUSIC_LIBRARY_DIR = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data', 'music-library');
 
+function listLocalMusicLibrary() {
+  fs.mkdirSync(MUSIC_LIBRARY_DIR, { recursive: true });
+  return fs.readdirSync(MUSIC_LIBRARY_DIR, { withFileTypes: true })
+    .filter(entry =>
+      entry.isFile() &&
+      !entry.isSymbolicLink() &&
+      /^[a-f0-9]{32}__[\p{L}\p{N} _-]{1,70}\.(mp3|wav|ogg|opus|m4a|aac|flac)$/iu.test(entry.name)
+    )
+    .map(entry => {
+      const match = /^([a-f0-9]{32})__(.*)\.([^.]+)$/i.exec(entry.name);
+      const fullPath = path.join(MUSIC_LIBRARY_DIR, entry.name);
+      const stat = fs.statSync(fullPath);
+      return {
+        id: match[1],
+        title: match[2].replace(/[_-]+/g, ' '),
+        extension: match[3].toLowerCase(),
+        size: stat.size,
+        filePath: fullPath,
+        source: 'local',
+      };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
 async function routeDashboardMusicPanel(queue, guild) {
   const musicSettings = getDashboardSettings(guild.id);
   const targetChannelId = String(musicSettings && musicSettings.music && musicSettings.music.requestChannelId || '').trim();
@@ -1087,21 +1126,71 @@ async function routeDashboardMusicPanel(queue, guild) {
 
   const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
   const permissions = botMember && targetChannel.permissionsFor(botMember);
-  if (!permissions || !permissions.has(PermissionFlagsBits.SendMessages) || !permissions.has(PermissionFlagsBits.EmbedLinks)) {
-    console.warn('The bot needs Send Messages and Embed Links permissions in the selected music request channel:', targetChannel.name);
+  const requiredPermissions = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.ReadMessageHistory,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.EmbedLinks,
+  ];
+  if (!permissions || !requiredPermissions.every(permission => permissions.has(permission))) {
+    console.warn('The bot needs View Channel, Read Message History, Send Messages and Embed Links permissions in the selected music request channel:', targetChannel.name);
     return;
   }
 
   if (queue.nowPlayingMessage && queue.nowPlayingMessage.channelId !== targetChannel.id) {
-    await queue.nowPlayingMessage.edit({ components: [] }).catch(() => {});
+    await queue.nowPlayingMessage.delete().catch(() => {});
     queue.nowPlayingMessage = null;
   }
+
   const savedPanel = musicPanelState[guild.id];
   if (savedPanel && savedPanel.channelId !== targetChannel.id) {
     delete musicPanelState[guild.id];
     saveMusicPanelState();
   }
+
   queue.textChannelId = targetChannel.id;
+
+  if (!queue.nowPlayingMessage) {
+    const currentSavedPanel = musicPanelState[guild.id];
+    if (currentSavedPanel && currentSavedPanel.channelId === targetChannel.id && currentSavedPanel.messageId) {
+      queue.nowPlayingMessage = await targetChannel.messages.fetch(currentSavedPanel.messageId).catch(() => null);
+    }
+  }
+
+  if (queue.nowPlayingMessage) {
+    if (queue.current) {
+      await updateMusicPanel(queue, queue.current);
+    } else {
+      await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(error => {
+        console.warn('Could not refresh the persistent idle music panel:', error.message || error);
+      });
+    }
+    return;
+  }
+
+  const panel = await targetChannel.send(buildIdleMusicPanel()).catch(error => {
+    console.warn('Could not create the persistent music panel:', error.message || error);
+    return null;
+  });
+  if (panel) {
+    queue.nowPlayingMessage = panel;
+    musicPanelState[guild.id] = { channelId: targetChannel.id, messageId: panel.id };
+    saveMusicPanelState();
+    logDebug('Created persistent music control panel in #' + targetChannel.name);
+  }
+}
+
+async function initializeMusicRequestPanels(readyClient) {
+  for (const guild of readyClient.guilds.cache.values()) {
+    const settings = getDashboardSettings(guild.id);
+    const musicSettings = settings && settings.music ? settings.music : {};
+    if (!musicSettings.enabled || !String(musicSettings.requestChannelId || '').trim()) continue;
+    try {
+      await routeDashboardMusicPanel(getQueue(guild.id), guild);
+    } catch (error) {
+      console.warn('Could not initialize the persistent music panel for ' + guild.id + ':', error.message || error);
+    }
+  }
 }
 
 async function playSavedTrackFromDashboard(guildId, voiceChannelId, savedTrack, requestedBy = 'Dashboard') {
@@ -1324,7 +1413,31 @@ function buildMusicPanel(queue, track) {
       .setEmoji('📜')
       .setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [artworkEmbed, infoEmbed], components: [row] };
+  const libraryRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music:library')
+      .setLabel('Local Music')
+      .setEmoji('📁')
+      .setStyle(ButtonStyle.Success)
+  );
+  return { embeds: [artworkEmbed, infoEmbed], components: [row, libraryRow] };
+}
+
+function buildIdleMusicPanel() {
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('🎧 HARD MUSIC PLAYER')
+    .setDescription('**Nothing is playing right now.**\nSend a song title or YouTube link in this channel, or choose a saved audio file with the button below.')
+    .setImage(MUSIC_FALLBACK_GIF_URL)
+    .setFooter({ text: 'HARD MUSIC PLAYER • This control panel stays here' });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music:library')
+      .setLabel('Local Music')
+      .setEmoji('📁')
+      .setStyle(ButtonStyle.Success)
+  );
+  return { embeds: [embed], components: [row] };
 }
 
 async function updateMusicPanel(queue, track) {
@@ -1393,14 +1506,111 @@ async function updateMusicPanel(queue, track) {
 async function markPlaybackFinished(queue) {
   void setMusicVoiceChannelStatus(queue, null);
   if (!queue.nowPlayingMessage) return;
-  const embed = new EmbedBuilder()
-    .setColor(0x747F8D)
-    .setTitle('⏹️ Playback Finished')
-    .setDescription('The queue is empty. Use /play to start another track.');
-  await queue.nowPlayingMessage.edit({ embeds: [embed], components: [] }).catch(() => {});
+  await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(error => {
+    console.warn('Could not restore the persistent idle music panel:', error.message || error);
+  });
+}
+
+async function buildLocalMusicPickerPayload(page = 0) {
+  const tracks = listLocalMusicLibrary();
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(tracks.length / pageSize));
+  const safePage = Math.min(pageCount - 1, Math.max(0, Number(page) || 0));
+  const pageTracks = tracks.slice(safePage * pageSize, (safePage + 1) * pageSize);
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('music-library-select:' + safePage)
+    .setPlaceholder('Choose a saved audio file')
+    .addOptions(pageTracks.map(track => ({
+      label: String(track.title || 'Untitled audio').slice(0, 100),
+      description: (track.extension.toUpperCase() + ' • ' + (track.size / 1024 / 1024).toFixed(2) + ' MB').slice(0, 100),
+      value: track.id,
+    })));
+
+  const components = [new ActionRowBuilder().addComponents(select)];
+  if (pageCount > 1) {
+    components.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('music-library-page:' + Math.max(0, safePage - 1))
+        .setLabel('Previous')
+        .setEmoji('◀️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage === 0),
+      new ButtonBuilder()
+        .setCustomId('music-library-page:' + Math.min(pageCount - 1, safePage + 1))
+        .setLabel('Next')
+        .setEmoji('▶️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage >= pageCount - 1)
+    ));
+  }
+
+  return {
+    content: tracks.length
+      ? '📁 **Saved local music** — choose a track below. Page ' + (safePage + 1) + ' of ' + pageCount + '.'
+      : '📁 The local music library is empty. Upload audio files in the dashboard first.',
+    components: tracks.length ? components : [],
+  };
+}
+
+async function showLocalMusicPicker(interaction, page = 0, update = false) {
+  if (!interaction.guildId || !interaction.guild) {
+    const payload = { content: 'This music library is only available inside the server.', flags: MessageFlags.Ephemeral };
+    return update ? interaction.update(payload) : interaction.reply(payload);
+  }
+  const settings = getDashboardSettings(interaction.guildId);
+  if (!settings.music.enabled) {
+    const payload = { content: 'Music is currently disabled by the server administrator.', flags: MessageFlags.Ephemeral };
+    return update ? interaction.update(payload) : interaction.reply(payload);
+  }
+
+  const payload = await buildLocalMusicPickerPayload(page);
+  if (update) return interaction.update(payload);
+  return interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+}
+
+async function handleLocalMusicPage(interaction) {
+  const page = Number(interaction.customId.split(':')[1]);
+  if (!Number.isInteger(page) || page < 0) {
+    return interaction.reply({ content: 'That library page is invalid. Open Local Music again.', flags: MessageFlags.Ephemeral });
+  }
+  return showLocalMusicPicker(interaction, page, true);
+}
+
+async function handleLocalMusicSelection(interaction) {
+  const selectedId = String(interaction.values && interaction.values[0] || '');
+  if (!/^[a-f0-9]{32}$/i.test(selectedId)) {
+    return interaction.reply({ content: 'That saved track selection is invalid.', flags: MessageFlags.Ephemeral });
+  }
+
+  await interaction.deferUpdate();
+  const savedTrack = listLocalMusicLibrary().find(track => track.id === selectedId);
+  if (!savedTrack) {
+    return interaction.editReply({ content: 'That audio file no longer exists. Open Local Music again to refresh the list.', components: [] });
+  }
+
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member || !member.voice.channel) {
+    return interaction.editReply({ content: 'Join a voice channel first, then choose the local track again.', components: [] });
+  }
+
+  const result = await playSavedTrackFromDashboard(
+    interaction.guildId,
+    member.voice.channel.id,
+    savedTrack,
+    interaction.user.username
+  );
+  return interaction.editReply({
+    content: '🎵 Added **' + String(result.track.title || savedTrack.title).slice(0, 160) +
+      '** to the queue. Voice channel: <#' + result.channelName + '>. Queue position: ' + result.position + '.',
+    components: [],
+  });
 }
 
 async function handleMusicButton(interaction) {
+  if (interaction.customId === 'music:library') {
+    return showLocalMusicPicker(interaction);
+  }
   const queue = queues.get(interaction.guildId);
   if (!queue || !queue.current) {
     return interaction.reply({ content: 'No track is currently playing.', flags: MessageFlags.Ephemeral });
@@ -1913,6 +2123,7 @@ async function enqueueTrackFromMessage(message, query) {
   const queue = getQueue(message.guildId);
   await connectVoice(message.guild, member.voice.channel, queue);
   queue.textChannelId = message.channelId;
+  await routeDashboardMusicPanel(queue, message.guild);
   const position = queue.tracks.length + (queue.current ? 1 : 0);
   queue.tracks.push(track);
   if (!queue.current) void playNext(message.guildId);
@@ -1952,17 +2163,14 @@ client.on(Events.MessageCreate, async (message) => {
             '** tracks to the queue. First track: **' + String(firstTrack.title || 'Unknown track').slice(0, 140) +
             '**. Queue starts at position ' + result.position + '.' +
             (result.truncated ? '\n⚠️ This playlist is large, so only the first 100 tracks were added.' : '');
-          await message.reply({
-            content: playlistMessage,
-            allowedMentions: { repliedUser: false },
-          });
+          await sendTemporaryMusicNotice(message, playlistMessage);
         } else {
           const track = result.tracks[0];
-          await message.reply({
-            content: '🎵 Direct link detected. Queued **' + String(track.title || 'Unknown track').slice(0, 160) +
-              '**. Queue position: ' + result.position + '.',
-            allowedMentions: { repliedUser: false },
-          });
+          await sendTemporaryMusicNotice(
+            message,
+            '🎵 Direct link detected. Queued **' + String(track.title || 'Unknown track').slice(0, 160) +
+              '**. Queue position: ' + result.position + '.'
+          );
         }
         return;
       }
@@ -2215,6 +2423,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Logged in as ' + readyClient.user.tag);
   startDashboard(readyClient, playTrackFromDashboard, playSavedTrackFromDashboard, getDashboardMusicStatus, controlDashboardMusic, async (member) => sendWelcomeMessage(member, getDashboardSettings(member.guild.id).welcome), getRuntimeMonitoring);
   startMusicRequestCleanupScheduler(readyClient);
+  await initializeMusicRequestPanels(readyClient);
   logDebug('AI providers configured: ' + [GEMINI_API_KEY ? 'Gemini (' + GEMINI_MODEL + ')' : null, GROQ_API_KEY ? 'Groq (' + GROQ_MODEL + ')' : null, CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN ? 'Cloudflare Workers AI (' + CLOUDFLARE_CHAT_MODEL + ')' : null].filter(Boolean).join(', ') + (GEMINI_API_KEY || GROQ_API_KEY || (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN) ? '.' : 'None. Add the required AI API variables in Railway Variables.'));
   applySavedBotPresence(readyClient);
   logDebug('Saved bot status and activity restored.');
@@ -2242,6 +2451,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (error) {
       console.error('Music search selection failed:', error.stack || error);
       const payload = { content: 'Could not add that song. Please send the request again.', flags: MessageFlags.Ephemeral };
+      if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
+      else await interaction.reply(payload).catch(() => {});
+    }
+    return;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith('music-library-page:')) {
+    try {
+      await handleLocalMusicPage(interaction);
+    } catch (error) {
+      console.error('Local music page interaction failed:', error.stack || error);
+      const payload = { content: 'Could not load that music library page. Please try again.', flags: MessageFlags.Ephemeral };
+      if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
+      else await interaction.reply(payload).catch(() => {});
+    }
+    return;
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('music-library-select:')) {
+    try {
+      await handleLocalMusicSelection(interaction);
+    } catch (error) {
+      console.error('Local music selection failed:', error.stack || error);
+      const payload = { content: 'Could not add that local track. Check that you are in a voice channel and try again.', flags: MessageFlags.Ephemeral };
       if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
       else await interaction.reply(payload).catch(() => {});
     }
@@ -2349,6 +2580,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = getQueue(interaction.guildId);
         await connectVoice(interaction.guild, member.voice.channel, queue);
         queue.textChannelId = interaction.channelId;
+        await routeDashboardMusicPanel(queue, interaction.guild);
         return respond(interaction, 'Joined your voice channel.');
       }
 
@@ -2360,6 +2592,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const queue = getQueue(interaction.guildId);
         await connectVoice(interaction.guild, member.voice.channel, queue);
         queue.textChannelId = interaction.channelId;
+        await routeDashboardMusicPanel(queue, interaction.guild);
         const position = queue.tracks.length + (queue.current ? 1 : 0);
         queue.tracks.push(track);
         if (!queue.current) void playNext(interaction.guildId);
