@@ -2485,8 +2485,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 
-const MANAGED_CHANNEL_TOPIC_OPEN = '【HARD BOT • راهنمای کانال】';
-const MANAGED_CHANNEL_TOPIC_CLOSE = '【پایان راهنمای HARD BOT】';
+// Invisible markers keep bot-managed topic text separate from any notes written by admins.
+const MANAGED_CHANNEL_TOPIC_OPEN = '\u2063\u200B\u2063';
+const MANAGED_CHANNEL_TOPIC_CLOSE = '\u2063\u200B\u2063';
+const LEGACY_MANAGED_CHANNEL_TOPIC_OPEN = '【HARD BOT • راهنمای کانال】';
+const LEGACY_MANAGED_CHANNEL_TOPIC_CLOSE = '【پایان راهنمای HARD BOT】';
 const MANAGED_CHANNEL_TOPIC_STATE_FILE = path.join(
   process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data',
   'managed-channel-topics.json'
@@ -2526,11 +2529,19 @@ function saveManagedChannelTopicState() {
 
 function removeManagedChannelTopicBlock(topic) {
   const current = String(topic || '');
-  const start = current.indexOf(MANAGED_CHANNEL_TOPIC_OPEN);
-  const end = current.indexOf(MANAGED_CHANNEL_TOPIC_CLOSE);
-  if (start < 0 || end < start) return current.trim();
-  const afterEnd = end + MANAGED_CHANNEL_TOPIC_CLOSE.length;
-  return (current.slice(0, start) + current.slice(afterEnd)).trim();
+  const invisibleStart = current.indexOf(MANAGED_CHANNEL_TOPIC_OPEN);
+  const invisibleEnd = current.lastIndexOf(MANAGED_CHANNEL_TOPIC_CLOSE);
+  if (invisibleStart >= 0 && invisibleEnd >= invisibleStart) {
+    return (current.slice(0, invisibleStart) +
+      current.slice(invisibleEnd + MANAGED_CHANNEL_TOPIC_CLOSE.length)).trim();
+  }
+
+  // Remove the visible Persian markers used by the previous version.
+  const legacyStart = current.indexOf(LEGACY_MANAGED_CHANNEL_TOPIC_OPEN);
+  const legacyEnd = current.indexOf(LEGACY_MANAGED_CHANNEL_TOPIC_CLOSE);
+  if (legacyStart < 0 || legacyEnd < legacyStart) return current.trim();
+  return (current.slice(0, legacyStart) +
+    current.slice(legacyEnd + LEGACY_MANAGED_CHANNEL_TOPIC_CLOSE.length)).trim();
 }
 
 function readCommunityTopicData() {
@@ -2563,25 +2574,25 @@ function getManagedChannelTopicDescriptions(guild) {
   const music = settings.music || {};
 
   if (welcome.enabled && welcome.channelId) {
-    add(welcome.channelId, '👋 خوش‌آمدگویی: پیام خوش‌آمدگویی اعضای جدید در این کانال ارسال می‌شود.');
+    add(welcome.channelId, '👋 Welcome Messages: New members receive their welcome message in this channel.');
   }
   if (goodbye.enabled && goodbye.channelId) {
-    add(goodbye.channelId, '👋 خداحافظی: هنگام خروج اعضا، پیام خداحافظی اینجا منتشر می‌شود.');
+    add(goodbye.channelId, '👋 Goodbye Messages: A message is posted here when a member leaves the server.');
   }
   if (logging.enabled !== false) {
     const logChannelId = logging.channelId || moderation.logChannelId;
     if (logChannelId) {
-      add(logChannelId, '📋 گزارش‌های سرور: رویدادهای انتخاب‌شدهٔ اعضا، پیام‌ها، ویس، کانال‌ها، نقش‌ها و تنظیمات سرور اینجا ثبت می‌شوند.');
+      add(logChannelId, '📋 Server Logs: Selected member, message, voice, channel, role, and server setting events are recorded here.');
     }
   }
   if (music.enabled !== false && music.requestChannelId) {
-    add(music.requestChannelId, '🎵 درخواست موزیک: لینک YouTube یا SoundCloud یا نام آهنگ را بفرستید؛ دکمه‌های پخش و Local Music هم در پنل همین کانال هستند.');
+    add(music.requestChannelId, '🎵 Music Requests: Send a YouTube or SoundCloud link, or search by song name. Playback controls and the Local Music library are available in the player panel here.');
   }
   if (ai.enabled !== false && ai.chatChannelId) {
-    add(ai.chatChannelId, '💬 گفت‌وگو با هوش مصنوعی: پیام خود را اینجا بنویسید تا ربات با سرویس هوش مصنوعی انتخاب‌شده پاسخ دهد.');
+    add(ai.chatChannelId, '💬 AI Chat: Send a message here and the bot will reply using the selected AI provider.');
   }
   if (ai.enabled !== false && ai.imageChannelId) {
-    add(ai.imageChannelId, '🎨 ساخت تصویر با هوش مصنوعی: توضیح تصویر دلخواهتان را به‌صورت متن در این کانال ارسال کنید.');
+    add(ai.imageChannelId, '🎨 AI Image Generation: Describe the image you want to create in a message in this channel.');
   }
 
   const reactionRoles = Array.isArray(settings.reactionRoles) ? settings.reactionRoles : [];
@@ -2591,61 +2602,61 @@ function getManagedChannelTopicDescriptions(guild) {
       .map(item => String(item.channelId))
   );
   for (const channelId of reactionRoleChannels) {
-    add(channelId, '🎭 نقش با واکنش: با واکنش‌دادن به پیام پنل، نقش مربوط را دریافت یا با برداشتن واکنش حذف کنید.');
+    add(channelId, '🎭 Reaction Roles: React to a panel message to receive the linked role. Remove your reaction to remove the role.');
   }
 
   const tickets = communityConfig.tickets || {};
   if (enabled('tickets')) {
-    add(tickets.panelChannelId, '🎫 پشتیبانی: از پنل این کانال برای بازکردن تیکت خصوصی با تیم پشتیبانی استفاده کنید.');
-    add(tickets.transcriptChannelId, '🧾 آرشیو تیکت‌ها: متن گفت‌وگوی تیکت‌های بسته‌شده برای بررسی تیم پشتیبانی اینجا ذخیره می‌شود.');
+    add(tickets.panelChannelId, '🎫 Support Tickets: Use the panel in this channel to open a private support ticket with the team.');
+    add(tickets.transcriptChannelId, '🧾 Ticket Transcripts: Conversations from closed tickets are saved here for the support team.');
   }
 
   const polls = communityConfig.polls || {};
-  if (enabled('polls')) add(polls.channelId, '📊 نظرسنجی‌ها: نظرسنجی‌های سرور در این کانال منتشر می‌شوند و اعضا می‌توانند از طریق دکمه‌ها رأی بدهند.');
+  if (enabled('polls')) add(polls.channelId, '📊 Polls: Server polls are posted here. Members can vote using the poll buttons.');
 
   const giveaways = communityConfig.giveaways || {};
-  if (enabled('giveaways')) add(giveaways.channelId, '🎉 قرعه‌کشی‌ها: پست‌های قرعه‌کشی اینجا منتشر می‌شوند؛ برای شرکت از دکمهٔ ورود استفاده کنید.');
+  if (enabled('giveaways')) add(giveaways.channelId, '🎉 Giveaways: Giveaway posts are published here. Use the Enter button to participate.');
 
   const suggestions = communityConfig.suggestions || {};
   if (enabled('suggestions')) {
-    add(suggestions.channelId, '💡 پیشنهادها: اعضا ایده‌های خود را اینجا ثبت می‌کنند و تیم بررسی می‌تواند آن‌ها را تأیید یا رد کند.');
+    add(suggestions.channelId, '💡 Suggestions: Members can submit ideas here for the staff team to review and approve or decline.');
   }
 
   const verification = communityConfig.verification || {};
   if (enabled('verification')) {
-    add(verification.channelId, '✅ تأیید عضویت: برای دریافت دسترسی سرور، پنل تأیید عضویت این کانال را انجام دهید.');
+    add(verification.channelId, '✅ Member Verification: Complete the verification panel in this channel to gain access to the server.');
   }
 
   const roleButtons = communityConfig.roleButtons || {};
   if (enabled('roleButtons')) {
-    add(roleButtons.channelId, '🎭 نقش‌های اختیاری: از دکمه‌های این کانال برای دریافت یا برداشتن نقش‌های قابل انتخاب استفاده کنید.');
+    add(roleButtons.channelId, '🎭 Self-Assignable Roles: Use the buttons in this channel to add or remove the roles you choose.');
   }
 
   const levels = communityConfig.levels || {};
   if (enabled('levels') && levels.announce !== false) {
-    add(levels.announceChannelId, '🏆 ارتقای سطح: ربات هنگام بالا رفتن Level اعضا، پیام تبریک را در این کانال ارسال می‌کند.');
+    add(levels.announceChannelId, '🏆 Level-Up Announcements: The bot posts a congratulatory message here when a member levels up.');
   }
 
   const invites = communityConfig.invites || {};
   if (enabled('invites') && invites.announceJoins) {
-    add(invites.logChannelId, '📩 اطلاع‌رسانی دعوت‌ها: ورود اعضایی که با دعوت ثبت‌شده وارد شده‌اند، در این کانال اعلام می‌شود.');
+    add(invites.logChannelId, '📩 Invite Tracking: Notifications about members joining through tracked invites are posted here.');
   }
 
   const streamAlerts = communityConfig.streamAlerts || {};
   if (enabled('streamAlerts')) {
-    add(streamAlerts.defaultChannelId, '🔴 هشدار استریم: اعلان زنده‌شدن سازندگان ثبت‌شده در Twitch، YouTube یا Kick در این کانال منتشر می‌شود.');
+    add(streamAlerts.defaultChannelId, '🔴 Stream Alerts: Notifications are posted here when followed creators go live on Twitch, YouTube, or Kick.');
   }
 
   const customCommands = communityConfig.customCommands || {};
   if (enabled('customCommands')) {
-    add(customCommands.defaultChannelId, '⚡ پاسخ دستورهای اختصاصی: خروجی دستورهای سفارشی تنظیم‌شده ممکن است در این کانال ارسال شود.');
+    add(customCommands.defaultChannelId, '⚡ Custom Commands: Responses from configured custom commands may be posted in this channel.');
   }
 
   // Include channels selected with setup commands, not only dashboard defaults.
   const communityData = readCommunityTopicData();
   if (enabled('suggestions')) {
     add(communityData.suggestions && communityData.suggestions[guild.id],
-      '💡 پیشنهادها: اعضا ایده‌های خود را اینجا ثبت می‌کنند و تیم بررسی می‌تواند آن‌ها را تأیید یا رد کند.');
+      '💡 Suggestions: Members can submit ideas here for the staff team to review and approve or decline.');
   }
   if (enabled('streamAlerts')) {
     const configuredAlerts = Array.isArray(communityData.streamAlerts && communityData.streamAlerts[guild.id])
@@ -2653,7 +2664,7 @@ function getManagedChannelTopicDescriptions(guild) {
       : [];
     for (const alert of configuredAlerts) {
       add(alert && alert.channelId,
-        '🔴 هشدار استریم: اعلان زنده‌شدن سازندگان ثبت‌شده در Twitch، YouTube یا Kick در این کانال منتشر می‌شود.');
+        '🔴 Stream Alerts: Notifications are posted here when followed creators go live on Twitch, YouTube, or Kick.');
     }
   }
   if (enabled('giveaways')) {
@@ -2662,7 +2673,7 @@ function getManagedChannelTopicDescriptions(guild) {
       : {};
     for (const [key, record] of Object.entries(records)) {
       if (key.startsWith(guild.id + ':') && record && record.channelId && !record.ended) {
-        add(record.channelId, '🎉 قرعه‌کشی‌ها: قرعه‌کشی فعال در این کانال منتشر شده است؛ برای شرکت از دکمهٔ ورود استفاده کنید.');
+        add(record.channelId, '🎉 Giveaways: Active giveaways are posted in this channel. Use the Enter button to participate.');
       }
     }
   }
