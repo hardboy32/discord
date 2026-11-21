@@ -2484,6 +2484,301 @@ client.on(Events.GuildMemberAdd, async (member) => {
   }
 });
 
+
+const MANAGED_CHANNEL_TOPIC_OPEN = '【HARD BOT • راهنمای کانال】';
+const MANAGED_CHANNEL_TOPIC_CLOSE = '【پایان راهنمای HARD BOT】';
+const MANAGED_CHANNEL_TOPIC_STATE_FILE = path.join(
+  process.env.RAILWAY_VOLUME_MOUNT_PATH || '/app/data',
+  'managed-channel-topics.json'
+);
+const COMMUNITY_TOPIC_DATA_FILE = process.env.COMMUNITY_DATA_FILE || '/app/data/community-data.json';
+const managedTopicPermissionWarnings = new Set();
+let managedTopicSyncTimer = null;
+let managedTopicSyncRunning = false;
+
+function loadManagedChannelTopicState() {
+  try {
+    fs.mkdirSync(path.dirname(MANAGED_CHANNEL_TOPIC_STATE_FILE), { recursive: true });
+    if (!fs.existsSync(MANAGED_CHANNEL_TOPIC_STATE_FILE)) return {};
+    const parsed = JSON.parse(fs.readFileSync(MANAGED_CHANNEL_TOPIC_STATE_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    console.warn('Managed channel topic state could not be loaded:', error.message || error);
+    return {};
+  }
+}
+
+const managedChannelTopicState = loadManagedChannelTopicState();
+
+function saveManagedChannelTopicState() {
+  try {
+    fs.mkdirSync(path.dirname(MANAGED_CHANNEL_TOPIC_STATE_FILE), { recursive: true });
+    const temporaryFile = MANAGED_CHANNEL_TOPIC_STATE_FILE + '.tmp';
+    fs.writeFileSync(temporaryFile, JSON.stringify(managedChannelTopicState, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    fs.renameSync(temporaryFile, MANAGED_CHANNEL_TOPIC_STATE_FILE);
+  } catch (error) {
+    console.warn('Managed channel topic state could not be saved:', error.message || error);
+  }
+}
+
+function removeManagedChannelTopicBlock(topic) {
+  const current = String(topic || '');
+  const start = current.indexOf(MANAGED_CHANNEL_TOPIC_OPEN);
+  const end = current.indexOf(MANAGED_CHANNEL_TOPIC_CLOSE);
+  if (start < 0 || end < start) return current.trim();
+  const afterEnd = end + MANAGED_CHANNEL_TOPIC_CLOSE.length;
+  return (current.slice(0, start) + current.slice(afterEnd)).trim();
+}
+
+function readCommunityTopicData() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(COMMUNITY_TOPIC_DATA_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getManagedChannelTopicDescriptions(guild) {
+  const settings = getDashboardSettings(guild.id) || {};
+  const community = settings.community || {};
+  const communityConfig = settings.communityConfig || {};
+  const descriptions = new Map();
+  const add = (channelId, description) => {
+    const id = String(channelId || '').trim();
+    if (!/^\d{17,20}$/.test(id) || !description) return;
+    if (!descriptions.has(id)) descriptions.set(id, []);
+    const lines = descriptions.get(id);
+    if (!lines.includes(description)) lines.push(description);
+  };
+  const enabled = key => community[key] !== false;
+  const ai = settings.ai || {};
+  const welcome = settings.welcome || {};
+  const goodbye = settings.goodbye || {};
+  const moderation = settings.moderation || {};
+  const logging = settings.logging || {};
+  const music = settings.music || {};
+
+  if (welcome.enabled && welcome.channelId) {
+    add(welcome.channelId, '👋 خوش‌آمدگویی: پیام خوش‌آمدگویی اعضای جدید در این کانال ارسال می‌شود.');
+  }
+  if (goodbye.enabled && goodbye.channelId) {
+    add(goodbye.channelId, '👋 خداحافظی: هنگام خروج اعضا، پیام خداحافظی اینجا منتشر می‌شود.');
+  }
+  if (logging.enabled !== false) {
+    const logChannelId = logging.channelId || moderation.logChannelId;
+    if (logChannelId) {
+      add(logChannelId, '📋 گزارش‌های سرور: رویدادهای انتخاب‌شدهٔ اعضا، پیام‌ها، ویس، کانال‌ها، نقش‌ها و تنظیمات سرور اینجا ثبت می‌شوند.');
+    }
+  }
+  if (music.enabled !== false && music.requestChannelId) {
+    add(music.requestChannelId, '🎵 درخواست موزیک: لینک YouTube یا SoundCloud یا نام آهنگ را بفرستید؛ دکمه‌های پخش و Local Music هم در پنل همین کانال هستند.');
+  }
+  if (ai.enabled !== false && ai.chatChannelId) {
+    add(ai.chatChannelId, '💬 گفت‌وگو با هوش مصنوعی: پیام خود را اینجا بنویسید تا ربات با سرویس هوش مصنوعی انتخاب‌شده پاسخ دهد.');
+  }
+  if (ai.enabled !== false && ai.imageChannelId) {
+    add(ai.imageChannelId, '🎨 ساخت تصویر با هوش مصنوعی: توضیح تصویر دلخواهتان را به‌صورت متن در این کانال ارسال کنید.');
+  }
+
+  const reactionRoles = Array.isArray(settings.reactionRoles) ? settings.reactionRoles : [];
+  const reactionRoleChannels = new Set(
+    reactionRoles
+      .filter(item => item && item.guildId === guild.id && item.channelId)
+      .map(item => String(item.channelId))
+  );
+  for (const channelId of reactionRoleChannels) {
+    add(channelId, '🎭 نقش با واکنش: با واکنش‌دادن به پیام پنل، نقش مربوط را دریافت یا با برداشتن واکنش حذف کنید.');
+  }
+
+  const tickets = communityConfig.tickets || {};
+  if (enabled('tickets')) {
+    add(tickets.panelChannelId, '🎫 پشتیبانی: از پنل این کانال برای بازکردن تیکت خصوصی با تیم پشتیبانی استفاده کنید.');
+    add(tickets.transcriptChannelId, '🧾 آرشیو تیکت‌ها: متن گفت‌وگوی تیکت‌های بسته‌شده برای بررسی تیم پشتیبانی اینجا ذخیره می‌شود.');
+  }
+
+  const polls = communityConfig.polls || {};
+  if (enabled('polls')) add(polls.channelId, '📊 نظرسنجی‌ها: نظرسنجی‌های سرور در این کانال منتشر می‌شوند و اعضا می‌توانند از طریق دکمه‌ها رأی بدهند.');
+
+  const giveaways = communityConfig.giveaways || {};
+  if (enabled('giveaways')) add(giveaways.channelId, '🎉 قرعه‌کشی‌ها: پست‌های قرعه‌کشی اینجا منتشر می‌شوند؛ برای شرکت از دکمهٔ ورود استفاده کنید.');
+
+  const suggestions = communityConfig.suggestions || {};
+  if (enabled('suggestions')) {
+    add(suggestions.channelId, '💡 پیشنهادها: اعضا ایده‌های خود را اینجا ثبت می‌کنند و تیم بررسی می‌تواند آن‌ها را تأیید یا رد کند.');
+  }
+
+  const verification = communityConfig.verification || {};
+  if (enabled('verification')) {
+    add(verification.channelId, '✅ تأیید عضویت: برای دریافت دسترسی سرور، پنل تأیید عضویت این کانال را انجام دهید.');
+  }
+
+  const roleButtons = communityConfig.roleButtons || {};
+  if (enabled('roleButtons')) {
+    add(roleButtons.channelId, '🎭 نقش‌های اختیاری: از دکمه‌های این کانال برای دریافت یا برداشتن نقش‌های قابل انتخاب استفاده کنید.');
+  }
+
+  const levels = communityConfig.levels || {};
+  if (enabled('levels') && levels.announce !== false) {
+    add(levels.announceChannelId, '🏆 ارتقای سطح: ربات هنگام بالا رفتن Level اعضا، پیام تبریک را در این کانال ارسال می‌کند.');
+  }
+
+  const invites = communityConfig.invites || {};
+  if (enabled('invites') && invites.announceJoins) {
+    add(invites.logChannelId, '📩 اطلاع‌رسانی دعوت‌ها: ورود اعضایی که با دعوت ثبت‌شده وارد شده‌اند، در این کانال اعلام می‌شود.');
+  }
+
+  const streamAlerts = communityConfig.streamAlerts || {};
+  if (enabled('streamAlerts')) {
+    add(streamAlerts.defaultChannelId, '🔴 هشدار استریم: اعلان زنده‌شدن سازندگان ثبت‌شده در Twitch، YouTube یا Kick در این کانال منتشر می‌شود.');
+  }
+
+  const customCommands = communityConfig.customCommands || {};
+  if (enabled('customCommands')) {
+    add(customCommands.defaultChannelId, '⚡ پاسخ دستورهای اختصاصی: خروجی دستورهای سفارشی تنظیم‌شده ممکن است در این کانال ارسال شود.');
+  }
+
+  // Include channels selected with setup commands, not only dashboard defaults.
+  const communityData = readCommunityTopicData();
+  if (enabled('suggestions')) {
+    add(communityData.suggestions && communityData.suggestions[guild.id],
+      '💡 پیشنهادها: اعضا ایده‌های خود را اینجا ثبت می‌کنند و تیم بررسی می‌تواند آن‌ها را تأیید یا رد کند.');
+  }
+  if (enabled('streamAlerts')) {
+    const configuredAlerts = Array.isArray(communityData.streamAlerts && communityData.streamAlerts[guild.id])
+      ? communityData.streamAlerts[guild.id]
+      : [];
+    for (const alert of configuredAlerts) {
+      add(alert && alert.channelId,
+        '🔴 هشدار استریم: اعلان زنده‌شدن سازندگان ثبت‌شده در Twitch، YouTube یا Kick در این کانال منتشر می‌شود.');
+    }
+  }
+  if (enabled('giveaways')) {
+    const records = communityData.giveaways && typeof communityData.giveaways === 'object'
+      ? communityData.giveaways
+      : {};
+    for (const [key, record] of Object.entries(records)) {
+      if (key.startsWith(guild.id + ':') && record && record.channelId && !record.ended) {
+        add(record.channelId, '🎉 قرعه‌کشی‌ها: قرعه‌کشی فعال در این کانال منتشر شده است؛ برای شرکت از دکمهٔ ورود استفاده کنید.');
+      }
+    }
+  }
+
+  return descriptions;
+}
+
+function buildManagedChannelTopic(existingTopic, descriptions) {
+  const preserved = removeManagedChannelTopicBlock(existingTopic);
+  const cleanDescriptions = descriptions.slice(0, 18).map(line => String(line).slice(0, 180));
+  const blockLines = [MANAGED_CHANNEL_TOPIC_OPEN, ...cleanDescriptions, MANAGED_CHANNEL_TOPIC_CLOSE];
+  let block = blockLines.join('\n');
+  if (block.length > 900) {
+    while (block.length > 900 && cleanDescriptions.length > 1) {
+      cleanDescriptions.pop();
+      block = [MANAGED_CHANNEL_TOPIC_OPEN, ...cleanDescriptions, '…', MANAGED_CHANNEL_TOPIC_CLOSE].join('\n');
+    }
+  }
+  const separator = preserved ? '\n\n' : '';
+  const remaining = Math.max(0, 1024 - block.length - separator.length);
+  const retainedNotes = preserved.slice(0, remaining);
+  return (block + (retainedNotes ? separator + retainedNotes : '')).slice(0, 1024);
+}
+
+async function syncManagedChannelTopicsForGuild(guild) {
+  const desired = getManagedChannelTopicDescriptions(guild);
+  const previousIds = new Set(
+    Array.isArray(managedChannelTopicState[guild.id]) ? managedChannelTopicState[guild.id].map(String) : []
+  );
+  const currentIds = new Set();
+
+  for (const [channelId, descriptions] of desired.entries()) {
+    const channel = guild.channels.cache.get(channelId) ||
+      await guild.channels.fetch(channelId).catch(() => null);
+    if (!channel || typeof channel.setTopic !== 'function' || !channel.isTextBased?.()) continue;
+
+    const nextTopic = buildManagedChannelTopic(channel.topic, descriptions);
+    if (String(channel.topic || '') !== nextTopic) {
+      const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+      const permissions = botMember && channel.permissionsFor(botMember);
+      if (!permissions || !permissions.has(PermissionFlagsBits.ManageChannels)) {
+        const warningKey = guild.id + ':' + channelId;
+        if (!managedTopicPermissionWarnings.has(warningKey)) {
+          console.warn('Cannot update the topic for #' + channel.name + ': grant the bot Manage Channels permission.');
+          managedTopicPermissionWarnings.add(warningKey);
+        }
+        continue;
+      }
+      try {
+        await channel.setTopic(nextTopic, 'Add or update the HARD BOT channel guide');
+      } catch (error) {
+        console.warn('Could not update the topic for #' + channel.name + ':', error.message || error);
+        continue;
+      }
+    }
+    currentIds.add(channelId);
+    previousIds.delete(channelId);
+  }
+
+  // Remove only our marked guide from channels that are no longer configured.
+  for (const channelId of previousIds) {
+    const channel = guild.channels.cache.get(channelId) ||
+      await guild.channels.fetch(channelId).catch(() => null);
+    if (channel && typeof channel.setTopic === 'function' && channel.isTextBased?.()) {
+      const cleanedTopic = removeManagedChannelTopicBlock(channel.topic);
+      if (cleanedTopic !== String(channel.topic || '')) {
+        const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+        const permissions = botMember && channel.permissionsFor(botMember);
+        if (!permissions || !permissions.has(PermissionFlagsBits.ManageChannels)) {
+          const warningKey = guild.id + ':' + channelId;
+          if (!managedTopicPermissionWarnings.has(warningKey)) {
+            console.warn('Cannot remove the old HARD BOT topic from #' + channel.name + ': grant the bot Manage Channels permission.');
+            managedTopicPermissionWarnings.add(warningKey);
+          }
+          currentIds.add(channelId);
+          continue;
+        }
+        try {
+          await channel.setTopic(cleanedTopic || null, 'Remove obsolete HARD BOT channel guide');
+        } catch (error) {
+          console.warn('Could not remove the old topic guide from #' + channel.name + ':', error.message || error);
+          currentIds.add(channelId);
+          continue;
+        }
+      }
+    }
+  }
+
+  managedChannelTopicState[guild.id] = [...currentIds];
+  saveManagedChannelTopicState();
+}
+
+async function syncManagedChannelTopics(readyClient) {
+  if (managedTopicSyncRunning) return;
+  managedTopicSyncRunning = true;
+  try {
+    for (const guild of readyClient.guilds.cache.values()) {
+      await syncManagedChannelTopicsForGuild(guild);
+    }
+  } catch (error) {
+    console.error('Managed channel topic sync failed:', error.stack || error);
+  } finally {
+    managedTopicSyncRunning = false;
+  }
+}
+
+function startManagedChannelTopicSync(readyClient) {
+  if (managedTopicSyncTimer) return;
+  void syncManagedChannelTopics(readyClient);
+  managedTopicSyncTimer = setInterval(() => {
+    void syncManagedChannelTopics(readyClient);
+  }, 60_000);
+  if (typeof managedTopicSyncTimer.unref === 'function') managedTopicSyncTimer.unref();
+  logDebug('Managed channel topic sync started; configured channel guides refresh every minute.');
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   logDebug('Runtime process ID:', process.pid);
   logDebug('Logged in as ' + readyClient.user.tag);
