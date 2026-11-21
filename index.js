@@ -2526,8 +2526,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (error) {
       console.error('Local music page interaction failed:', error.stack || error);
       const payload = { content: 'Could not load that music library page. Please try again.', flags: MessageFlags.Ephemeral };
-      if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
-      else await interaction.reply(payload).catch(() => {});
+      await sendEphemeralNotice(interaction, payload);
     }
     return;
   }
@@ -2537,8 +2536,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (error) {
       console.error('Local music selection failed:', error.stack || error);
       const payload = { content: 'Could not add that local track. Check that you are in a voice channel and try again.', flags: MessageFlags.Ephemeral };
-      if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
-      else await interaction.reply(payload).catch(() => {});
+      await sendEphemeralNotice(interaction, payload);
     }
     return;
   }
