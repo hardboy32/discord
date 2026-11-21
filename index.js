@@ -111,15 +111,32 @@ async function getRuntimeMonitoring() {
     });
     if (response.ok) {
       const stats = await response.json();
+      const connectedNode = [...shoukaku.nodes.values()].find(item => item.state === 1) || null;
+      const nodeStats = connectedNode && connectedNode.stats ? connectedNode.stats : null;
+      const frameStats = nodeStats && nodeStats.frameStats ? {
+        sent: Number(nodeStats.frameStats.sent) || 0,
+        nulled: Number(nodeStats.frameStats.nulled) || 0,
+        deficit: Number(nodeStats.frameStats.deficit) || 0,
+      } : null;
       lavalink = {
         memoryUsed: Number(stats.memory && stats.memory.used) || 0,
         memoryAllocated: Number(stats.memory && stats.memory.allocated) || 0,
         players: Number(stats.players) || 0,
         playingPlayers: Number(stats.playingPlayers) || 0,
         cpuLoad: Number(stats.cpu && stats.cpu.lavalinkLoad) || 0,
+        frameStats,
       };
     }
   } catch {}
+  const activeAudio = [...queues.entries()]
+    .filter(([, queue]) => Boolean(queue.current))
+    .map(([guildId, queue]) => ({
+      guildId,
+      trackTitle: String(queue.current && queue.current.title || 'Unknown track').slice(0, 120),
+      voiceConnected: queue.lavalinkVoiceConnected === true,
+      voicePingMs: Number.isFinite(queue.lavalinkPing) ? queue.lavalinkPing : null,
+      lastPlayerUpdateAt: queue.lastLavalinkUpdateAt,
+    }));
   return {
     sampledAt: now,
     uptimeSeconds: process.uptime(),
@@ -131,6 +148,7 @@ async function getRuntimeMonitoring() {
     containerMemoryUsed: Number.isFinite(containerMemoryUsed) && containerMemoryUsed > 0 ? containerMemoryUsed : null,
     containerMemoryLimit: Number.isFinite(containerMemoryLimit) && containerMemoryLimit > 0 && containerMemoryLimit < 1e15 ? containerMemoryLimit : null,
     lavalink,
+    activeAudio,
   };
 }
 const shoukaku = new Shoukaku(
@@ -497,6 +515,9 @@ function getQueue(guildId) {
     connection: null,
     lavalinkPlayer: null,
     lavalinkPosition: 0,
+    lavalinkPing: null,
+    lavalinkVoiceConnected: false,
+    lastLavalinkUpdateAt: null,
     pendingTrackFailure: null,
     endEventTimer: null,
     playbackWatchdog: null,
@@ -687,6 +708,10 @@ function attachLavalinkPlayerEvents(queue, guildId, lavalinkPlayer) {
   lavalinkPlayer.on('update', data => {
     if (queue.lavalinkPlayer === lavalinkPlayer && data && data.state) {
       queue.lavalinkPosition = Number(data.state.position || 0);
+      const voicePing = Number(data.state.ping);
+      queue.lavalinkPing = Number.isFinite(voicePing) && voicePing >= 0 ? voicePing : null;
+      queue.lavalinkVoiceConnected = data.state.connected === true;
+      queue.lastLavalinkUpdateAt = Date.now();
       if (queue.playbackWatchdog && queue.lavalinkPosition >= 1500) {
         clearTimeout(queue.playbackWatchdog);
         queue.playbackWatchdog = null;
@@ -1081,6 +1106,9 @@ async function connectVoice(guild, channel, queue) {
   queue.voiceChannelId = channel.id;
   queue.player.state.status = AudioPlayerStatus.Idle;
   queue.lavalinkPosition = 0;
+  queue.lavalinkPing = null;
+  queue.lavalinkVoiceConnected = false;
+  queue.lastLavalinkUpdateAt = null;
   queue.pendingTrackFailure = null;
   attachLavalinkPlayerEvents(queue, guild.id, lavalinkPlayer);
   logDebug('Lavalink voice player connected:', channel.name, '| guild:', guild.id);
