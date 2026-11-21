@@ -1161,14 +1161,15 @@ async function routeDashboardMusicPanel(queue, guild) {
     if (queue.current) {
       await updateMusicPanel(queue, queue.current);
     } else {
-      await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(error => {
+      await editIdleMusicPanel(queue.nowPlayingMessage).catch(error => {
         console.warn('Could not refresh the persistent idle music panel:', error.message || error);
       });
     }
     return;
   }
 
-  const panel = await targetChannel.send(buildIdleMusicPanel()).catch(error => {
+  const idlePanelPayload = await buildIdleMusicPanel();
+  const panel = await targetChannel.send(idlePanelPayload).catch(error => {
     console.warn('Could not create the persistent music panel:', error.message || error);
     return null;
   });
@@ -1413,31 +1414,32 @@ function buildMusicPanel(queue, track) {
       .setEmoji('📜')
       .setStyle(ButtonStyle.Secondary)
   );
-  const libraryRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('music:library')
-      .setLabel('Local Music')
-      .setEmoji('📁')
-      .setStyle(ButtonStyle.Success)
-  );
-  return { embeds: [artworkEmbed, infoEmbed], components: [row, libraryRow] };
+  return { embeds: [artworkEmbed, infoEmbed], components: [row] };
 }
 
-function buildIdleMusicPanel() {
+async function buildIdleMusicPanel() {
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle('🎧 HARD MUSIC PLAYER')
-    .setDescription('**Nothing is playing right now.**\nSend a song title or YouTube link in this channel, or choose a saved audio file with the button below.')
-    .setImage(MUSIC_FALLBACK_GIF_URL)
+    .setDescription('**Nothing is playing right now.**\nSend a song title or YouTube link in this channel, or type **لوکال** to browse the saved music library.')
     .setFooter({ text: 'HARD MUSIC PLAYER • This control panel stays here' });
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('music:library')
-      .setLabel('Local Music')
-      .setEmoji('📁')
-      .setStyle(ButtonStyle.Success)
-  );
-  return { embeds: [embed], components: [row] };
+
+  const payload = { embeds: [embed], components: [] };
+  try {
+    const fallbackAttachment = await createFallbackGifAttachment();
+    embed.setImage('attachment://music-fallback.gif');
+    payload.files = [fallbackAttachment];
+  } catch (error) {
+    console.warn('Could not load the selected idle player GIF; using the default image:', error.message || error);
+    embed.setImage(MUSIC_FALLBACK_GIF_URL);
+  }
+  return payload;
+}
+
+async function editIdleMusicPanel(message) {
+  if (!message) return null;
+  const payload = await buildIdleMusicPanel();
+  return message.edit({ ...payload, attachments: [] });
 }
 
 async function updateMusicPanel(queue, track) {
@@ -1506,7 +1508,7 @@ async function updateMusicPanel(queue, track) {
 async function markPlaybackFinished(queue) {
   void setMusicVoiceChannelStatus(queue, null);
   if (!queue.nowPlayingMessage) return;
-  await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(error => {
+  await editIdleMusicPanel(queue.nowPlayingMessage).catch(error => {
     console.warn('Could not restore the persistent idle music panel:', error.message || error);
   });
 }
@@ -1518,16 +1520,18 @@ async function buildLocalMusicPickerPayload(page = 0) {
   const safePage = Math.min(pageCount - 1, Math.max(0, Number(page) || 0));
   const pageTracks = tracks.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('music-library-select:' + safePage)
-    .setPlaceholder('Choose a saved audio file')
-    .addOptions(pageTracks.map(track => ({
-      label: String(track.title || 'Untitled audio').slice(0, 100),
-      description: (track.extension.toUpperCase() + ' • ' + (track.size / 1024 / 1024).toFixed(2) + ' MB').slice(0, 100),
-      value: track.id,
-    })));
-
-  const components = [new ActionRowBuilder().addComponents(select)];
+  const components = [];
+  if (pageTracks.length) {
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('music-library-select:' + safePage)
+      .setPlaceholder('Choose a saved audio file')
+      .addOptions(pageTracks.map(track => ({
+        label: String(track.title || 'Untitled audio').slice(0, 100),
+        description: (track.extension.toUpperCase() + ' • ' + (track.size / 1024 / 1024).toFixed(2) + ' MB').slice(0, 100),
+        value: track.id,
+      })));
+    components.push(new ActionRowBuilder().addComponents(select));
+  }
   if (pageCount > 1) {
     components.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -1551,6 +1555,45 @@ async function buildLocalMusicPickerPayload(page = 0) {
       : '📁 The local music library is empty. Upload audio files in the dashboard first.',
     components: tracks.length ? components : [],
   };
+}
+
+const activeLocalMusicPickers = new Map();
+
+async function sendLocalMusicPickerFromMessage(message) {
+  const settings = getDashboardSettings(message.guildId);
+  const musicSettings = settings && settings.music ? settings.music : {};
+  if (!musicSettings.enabled) {
+    await sendTemporaryMusicNotice(message, 'Music is currently disabled by the server administrator.');
+    return;
+  }
+
+  const payload = await buildLocalMusicPickerPayload(0);
+  if (!payload.components.length) {
+    await sendTemporaryMusicNotice(message, payload.content, 8000);
+    return;
+  }
+
+  const previousPicker = activeLocalMusicPickers.get(message.channelId);
+  if (previousPicker) {
+    await previousPicker.delete().catch(() => {});
+    activeLocalMusicPickers.delete(message.channelId);
+  }
+
+  payload.content = '📁 **Local music library** — choose a saved track below. ' +
+    'Use the page buttons if there are more than 25 tracks.';
+  const pickerMessage = await message.channel.send({
+    ...payload,
+    allowedMentions: { parse: [] },
+  });
+  activeLocalMusicPickers.set(message.channelId, pickerMessage);
+
+  const timer = setTimeout(() => {
+    if (activeLocalMusicPickers.get(message.channelId)?.id === pickerMessage.id) {
+      activeLocalMusicPickers.delete(message.channelId);
+    }
+    void pickerMessage.delete().catch(() => {});
+  }, 60_000);
+  if (typeof timer.unref === 'function') timer.unref();
 }
 
 async function showLocalMusicPicker(interaction, page = 0, update = false) {
@@ -1650,7 +1693,7 @@ async function handleMusicButton(interaction) {
       queue.tracks = [];
       queue.current = null;
       queue.player.stop(true);
-      if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
+      if (queue.nowPlayingMessage) await editIdleMusicPanel(queue.nowPlayingMessage).catch(() => {});
       return replyEphemeralAndDelete(interaction, { content: 'Playback stopped and the queue was cleared.' });
     case 'music:loop':
       queue.loopMode = queue.loopMode === 'off' ? 'track' : queue.loopMode === 'track' ? 'queue' : 'off';
@@ -2211,6 +2254,12 @@ client.on(Events.MessageCreate, async (message) => {
       } catch (cleanupError) {
         console.warn('Could not remove previous music request messages. Check Manage Messages permission:', cleanupError.message || cleanupError);
       }
+      const localCommand = query.toLocaleLowerCase('fa-IR').replace(/[.!؟?،]+$/u, '').trim();
+      if (/^(?:لوکال|لوكال|local|local music)$/iu.test(localCommand)) {
+        await sendLocalMusicPickerFromMessage(message);
+        return;
+      }
+
       const directUrl = normalizeMusicRequestUrl(query);
       if (directUrl) {
         const result = await enqueueDirectMusicUrl(message, directUrl);
@@ -3014,7 +3063,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.tracks = [];
         queue.current = null;
         queue.player.stop(true);
-        if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
+        if (queue.nowPlayingMessage) await editIdleMusicPanel(queue.nowPlayingMessage).catch(() => {});
         return respond(interaction, 'Playback stopped and the queue was cleared.');
       }
 
@@ -3034,7 +3083,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.voiceChannelId = null;
         queue.player.state.status = AudioPlayerStatus.Idle;
         queue.lavalinkPosition = 0;
-        if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
+        if (queue.nowPlayingMessage) await editIdleMusicPanel(queue.nowPlayingMessage).catch(() => {});
         return respond(interaction, 'Left the voice channel.');
       }
 
