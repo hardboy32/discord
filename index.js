@@ -915,21 +915,21 @@ async function handleMusicSearchSelection(interaction) {
   const pending = pendingMusicSelections.get(selectionId);
   if (!pending || pending.expiresAt <= Date.now()) {
     pendingMusicSelections.delete(selectionId);
-    await interaction.reply({ content: 'This song selection has expired. Send your request again.', flags: MessageFlags.Ephemeral });
+    await replyEphemeralAndDelete({ content: 'This song selection has expired. Send your request again.' });
     return;
   }
   if (interaction.user.id !== pending.userId) {
-    await interaction.reply({ content: 'Only the person who requested these songs can choose one.', flags: MessageFlags.Ephemeral });
+    await replyEphemeralAndDelete({ content: 'Only the person who requested these songs can choose one.' });
     return;
   }
   if (interaction.guildId !== pending.guildId || interaction.channelId !== pending.channelId) {
-    await interaction.reply({ content: 'This selection belongs to another channel.', flags: MessageFlags.Ephemeral });
+    await replyEphemeralAndDelete({ content: 'This selection belongs to another channel.' });
     return;
   }
   const index = Number(parts[2]);
   const track = Number.isInteger(index) ? pending.candidates[index] : null;
   if (!track) {
-    await interaction.reply({ content: 'That result is no longer available. Search again.', flags: MessageFlags.Ephemeral });
+    await replyEphemeralAndDelete({ content: 'That result is no longer available. Search again.' });
     return;
   }
   await interaction.deferUpdate();
@@ -1555,25 +1555,32 @@ async function buildLocalMusicPickerPayload(page = 0) {
 
 async function showLocalMusicPicker(interaction, page = 0, update = false) {
   if (!interaction.guildId || !interaction.guild) {
-    const payload = { content: 'This music library is only available inside the server.', flags: MessageFlags.Ephemeral };
-    return update ? interaction.update(payload) : interaction.reply(payload);
+    return update
+      ? interaction.update({ content: 'This music library is only available inside the server.', components: [] })
+      : replyEphemeralAndDelete(interaction, { content: 'This music library is only available inside the server.' });
   }
   const settings = getDashboardSettings(interaction.guildId);
   const musicSettings = settings && settings.music ? settings.music : {};
   if (!musicSettings.enabled) {
-    const payload = { content: 'Music is currently disabled by the server administrator.', flags: MessageFlags.Ephemeral };
-    return update ? interaction.update(payload) : interaction.reply(payload);
+    return update
+      ? interaction.update({ content: 'Music is currently disabled by the server administrator.', components: [] })
+      : replyEphemeralAndDelete(interaction, { content: 'Music is currently disabled by the server administrator.' });
   }
 
   const payload = await buildLocalMusicPickerPayload(page);
-  if (update) return interaction.update(payload);
-  return interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+  const hasChoices = Array.isArray(payload.components) && payload.components.length > 0;
+  if (update) {
+    const response = await interaction.update(payload);
+    scheduleEphemeralReplyDeletion(interaction, hasChoices ? 60000 : 8000);
+    return response;
+  }
+  return replyEphemeralAndDelete(interaction, payload, hasChoices ? 60000 : 8000);
 }
 
 async function handleLocalMusicPage(interaction) {
   const page = Number(interaction.customId.split(':')[1]);
   if (!Number.isInteger(page) || page < 0) {
-    return interaction.reply({ content: 'That library page is invalid. Open Local Music again.', flags: MessageFlags.Ephemeral });
+    return replyEphemeralAndDelete(interaction, { content: 'That library page is invalid. Open Local Music again.' });
   }
   return showLocalMusicPicker(interaction, page, true);
 }
@@ -1581,18 +1588,22 @@ async function handleLocalMusicPage(interaction) {
 async function handleLocalMusicSelection(interaction) {
   const selectedId = String(interaction.values && interaction.values[0] || '');
   if (!/^[a-f0-9]{32}$/i.test(selectedId)) {
-    return interaction.reply({ content: 'That saved track selection is invalid.', flags: MessageFlags.Ephemeral });
+    return replyEphemeralAndDelete(interaction, { content: 'That saved track selection is invalid.' });
   }
 
   await interaction.deferUpdate();
   const savedTrack = listLocalMusicLibrary().find(track => track.id === selectedId);
   if (!savedTrack) {
-    return interaction.editReply({ content: 'That audio file no longer exists. Open Local Music again to refresh the list.', components: [] });
+    const response = await interaction.editReply({ content: 'That audio file no longer exists. Open Local Music again to refresh the list.', components: [] });
+    scheduleEphemeralReplyDeletion(interaction, 8000);
+    return response;
   }
 
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member || !member.voice.channel) {
-    return interaction.editReply({ content: 'Join a voice channel first, then choose the local track again.', components: [] });
+    const response = await interaction.editReply({ content: 'Join a voice channel first, then choose the local track again.', components: [] });
+    scheduleEphemeralReplyDeletion(interaction, 8000);
+    return response;
   }
 
   const result = await playSavedTrackFromDashboard(
@@ -1601,11 +1612,13 @@ async function handleLocalMusicSelection(interaction) {
     savedTrack,
     interaction.user.username
   );
-  return interaction.editReply({
+  const response = await interaction.editReply({
     content: '🎵 Added **' + String(result.track.title || savedTrack.title).slice(0, 160) +
       '** to the queue in #' + result.channelName + '. Queue position: ' + result.position + '.',
     components: [],
   });
+  scheduleEphemeralReplyDeletion(interaction, 6000);
+  return response;
 }
 
 async function handleMusicButton(interaction) {
@@ -1614,12 +1627,11 @@ async function handleMusicButton(interaction) {
   }
   const queue = queues.get(interaction.guildId);
   if (!queue || !queue.current) {
-    return interaction.reply({ content: 'No track is currently playing.', flags: MessageFlags.Ephemeral });
+    return replyEphemeralAndDelete(interaction, { content: 'No track is currently playing.' });
   }
   if (!(await userSharesVoice(interaction, queue))) {
-    return interaction.reply({
+    return replyEphemeralAndDelete(interaction, {
       content: 'You must be in the same voice channel as the bot to use these controls.',
-      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -1632,14 +1644,14 @@ async function handleMusicButton(interaction) {
     case 'music:skip':
       queue.skipCurrent = true;
       queue.player.stop(true);
-      return interaction.reply({ content: 'Skipping to the next track.', flags: MessageFlags.Ephemeral });
+      return replyEphemeralAndDelete(interaction, { content: 'Skipping to the next track.' });
     case 'music:stop':
       queue.stopping = true;
       queue.tracks = [];
       queue.current = null;
       queue.player.stop(true);
       if (queue.nowPlayingMessage) await queue.nowPlayingMessage.edit(buildIdleMusicPanel()).catch(() => {});
-      return interaction.reply({ content: 'Playback stopped and the queue was cleared.', flags: MessageFlags.Ephemeral });
+      return replyEphemeralAndDelete(interaction, { content: 'Playback stopped and the queue was cleared.' });
     case 'music:loop':
       queue.loopMode = queue.loopMode === 'off' ? 'track' : queue.loopMode === 'track' ? 'queue' : 'off';
       await updateMusicPanel(queue, queue.current);
@@ -1648,13 +1660,12 @@ async function handleMusicButton(interaction) {
       const lines = [];
       if (queue.current) lines.push('🎵 Now: ' + queue.current.title);
       queue.tracks.slice(0, 15).forEach((item, index) => lines.push((index + 1) + '. ' + item.title));
-      return interaction.reply({
+      return replyEphemeralAndDelete(interaction, {
         content: lines.length ? lines.join('\n').slice(0, 1900) : 'The queue is empty.',
-        flags: MessageFlags.Ephemeral,
       });
     }
     default:
-      return interaction.reply({ content: 'This button is not recognized.', flags: MessageFlags.Ephemeral });
+      return replyEphemeralAndDelete(interaction, { content: 'This button is not recognized.' });
   }
 }
 
@@ -1708,11 +1719,64 @@ async function playNext(guildId) {
   }
 }
 
+function scheduleEphemeralReplyDeletion(interaction, delayMs = 8000) {
+  const timer = setTimeout(() => {
+    if (typeof interaction.deleteReply === 'function') {
+      void interaction.deleteReply().catch(error => {
+        // The message may already have been deleted or its interaction token expired.
+        if (![10008, 10015].includes(Number(error && error.code))) {
+          logDebug('Could not auto-delete an ephemeral interaction reply:', error && error.message || error);
+        }
+      });
+    }
+  }, Math.max(1000, Number(delayMs) || 8000));
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
+function scheduleEphemeralMessageDeletion(message, delayMs = 8000) {
+  if (!message || typeof message.delete !== 'function') return;
+  const timer = setTimeout(() => {
+    void message.delete().catch(error => {
+      if (![10008, 10015].includes(Number(error && error.code))) {
+        logDebug('Could not auto-delete an ephemeral follow-up:', error && error.message || error);
+      }
+    });
+  }, Math.max(1000, Number(delayMs) || 8000));
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
+async function replyEphemeralAndDelete(interaction, payload, delayMs = 8000) {
+  const response = await interaction.reply({
+    ...payload,
+    flags: MessageFlags.Ephemeral,
+  });
+  scheduleEphemeralReplyDeletion(interaction, delayMs);
+  return response;
+}
+
+async function followUpEphemeralAndDelete(interaction, payload, delayMs = 8000) {
+  const message = await interaction.followUp({
+    ...payload,
+    flags: MessageFlags.Ephemeral,
+  });
+  scheduleEphemeralMessageDeletion(message, delayMs);
+  return message;
+}
+
+async function sendEphemeralNotice(interaction, payload, delayMs = 8000) {
+  if (interaction.deferred || interaction.replied) {
+    return followUpEphemeralAndDelete(interaction, payload, delayMs).catch(() => null);
+  }
+  return replyEphemeralAndDelete(interaction, payload, delayMs).catch(() => null);
+}
+
 async function respond(interaction, content) {
   if (interaction.deferred || interaction.replied) {
-    return interaction.editReply({ content });
+    const response = await interaction.editReply({ content });
+    scheduleEphemeralReplyDeletion(interaction, 8000);
+    return response;
   }
-  return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+  return replyEphemeralAndDelete(interaction, { content }, 8000);
 }
 
 async function isBotOwner(userId) {
@@ -2443,8 +2507,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (error) {
     console.error('Core module interaction failed:', error.stack || error);
     const payload = { content: 'That action could not be completed. Check the bot permissions and try again.', flags: MessageFlags.Ephemeral };
-    if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
-    else await interaction.reply(payload).catch(() => {});
+    await sendEphemeralNotice(interaction, payload);
     return;
   }
   if (interaction.isButton() && interaction.customId.startsWith('music-search:')) {
@@ -2453,8 +2516,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (error) {
       console.error('Music search selection failed:', error.stack || error);
       const payload = { content: 'Could not add that song. Please send the request again.', flags: MessageFlags.Ephemeral };
-      if (interaction.deferred || interaction.replied) await interaction.followUp(payload).catch(() => {});
-      else await interaction.reply(payload).catch(() => {});
+      await sendEphemeralNotice(interaction, payload);
     }
     return;
   }
@@ -2486,8 +2548,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (error) {
       console.error('Music control button failed:', error.stack || error);
       const message = { content: 'Music control failed. Please try again.', flags: MessageFlags.Ephemeral };
-      if (interaction.deferred || interaction.replied) await interaction.followUp(message).catch(() => {});
-      else await interaction.reply(message).catch(() => {});
+      await sendEphemeralNotice(interaction, message);
     }
     return;
   }
@@ -2530,7 +2591,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
       case 'ping':
-        return interaction.reply({ content: 'Pong! ' + client.ws.ping + ' ms', flags: MessageFlags.Ephemeral });
+        return replyEphemeralAndDelete(interaction, { content: 'Pong! ' + client.ws.ping + ' ms' });
 
       case 'activity': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -2572,7 +2633,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             { name: 'Moderation', value: '/kick /ban /timeout /untimeout /clear /slowmode /lock /unlock /warn /warnings /clearwarns' },
           )
           .setFooter({ text: 'Moderation commands require the matching Discord permissions.' });
-        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        return replyEphemeralAndDelete(interaction, { embeds: [embed] });
       }
 
       case 'join': {
