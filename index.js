@@ -1571,7 +1571,7 @@ async function showLocalMusicPicker(interaction, page = 0, update = false) {
   const hasChoices = Array.isArray(payload.components) && payload.components.length > 0;
   if (update) {
     const response = await interaction.update(payload);
-    scheduleEphemeralReplyDeletion(interaction, hasChoices ? 60000 : 8000);
+    scheduleEphemeralReplyDeletion(interaction, hasChoices ? 60000 : 3000);
     return response;
   }
   return replyEphemeralAndDelete(interaction, payload, hasChoices ? 60000 : 8000);
