@@ -1290,9 +1290,10 @@ function startBirthdayReminderScheduler(client) {
   };
 
   void check().catch(error => console.error('Birthday reminder check failed:', error.stack || error));
+  // Birthdays only need a periodic daily check; keep the immediate startup check above.
   birthdayReminderTimer = setInterval(
     () => void check().catch(error => console.error('Birthday reminder check failed:', error.stack || error)),
-    60 * 1000
+    12 * 60 * 60 * 1000
   );
   if (typeof birthdayReminderTimer.unref === 'function') birthdayReminderTimer.unref();
 
