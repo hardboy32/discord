@@ -1595,14 +1595,14 @@ async function handleLocalMusicSelection(interaction) {
   const savedTrack = listLocalMusicLibrary().find(track => track.id === selectedId);
   if (!savedTrack) {
     const response = await interaction.editReply({ content: 'That audio file no longer exists. Open Local Music again to refresh the list.', components: [] });
-    scheduleEphemeralReplyDeletion(interaction, 8000);
+    scheduleEphemeralReplyDeletion(interaction, 3000);
     return response;
   }
 
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!member || !member.voice.channel) {
     const response = await interaction.editReply({ content: 'Join a voice channel first, then choose the local track again.', components: [] });
-    scheduleEphemeralReplyDeletion(interaction, 8000);
+    scheduleEphemeralReplyDeletion(interaction, 3000);
     return response;
   }
 
@@ -1617,7 +1617,7 @@ async function handleLocalMusicSelection(interaction) {
       '** to the queue in #' + result.channelName + '. Queue position: ' + result.position + '.',
     components: [],
   });
-  scheduleEphemeralReplyDeletion(interaction, 6000);
+  scheduleEphemeralReplyDeletion(interaction, 3000);
   return response;
 }
 
@@ -1719,7 +1719,7 @@ async function playNext(guildId) {
   }
 }
 
-function scheduleEphemeralReplyDeletion(interaction, delayMs = 8000) {
+function scheduleEphemeralReplyDeletion(interaction, delayMs = 3000) {
   const timer = setTimeout(() => {
     if (typeof interaction.deleteReply === 'function') {
       void interaction.deleteReply().catch(error => {
@@ -1733,7 +1733,7 @@ function scheduleEphemeralReplyDeletion(interaction, delayMs = 8000) {
   if (typeof timer.unref === 'function') timer.unref();
 }
 
-function scheduleEphemeralMessageDeletion(message, delayMs = 8000) {
+function scheduleEphemeralMessageDeletion(message, delayMs = 3000) {
   if (!message || typeof message.delete !== 'function') return;
   const timer = setTimeout(() => {
     void message.delete().catch(error => {
@@ -1745,7 +1745,7 @@ function scheduleEphemeralMessageDeletion(message, delayMs = 8000) {
   if (typeof timer.unref === 'function') timer.unref();
 }
 
-async function replyEphemeralAndDelete(interaction, payload, delayMs = 8000) {
+async function replyEphemeralAndDelete(interaction, payload, delayMs = 3000) {
   const response = await interaction.reply({
     ...payload,
     flags: MessageFlags.Ephemeral,
@@ -1754,7 +1754,7 @@ async function replyEphemeralAndDelete(interaction, payload, delayMs = 8000) {
   return response;
 }
 
-async function followUpEphemeralAndDelete(interaction, payload, delayMs = 8000) {
+async function followUpEphemeralAndDelete(interaction, payload, delayMs = 3000) {
   const message = await interaction.followUp({
     ...payload,
     flags: MessageFlags.Ephemeral,
@@ -1763,7 +1763,7 @@ async function followUpEphemeralAndDelete(interaction, payload, delayMs = 8000) 
   return message;
 }
 
-async function sendEphemeralNotice(interaction, payload, delayMs = 8000) {
+async function sendEphemeralNotice(interaction, payload, delayMs = 3000) {
   if (interaction.deferred || interaction.replied) {
     return followUpEphemeralAndDelete(interaction, payload, delayMs).catch(() => null);
   }
@@ -1773,7 +1773,7 @@ async function sendEphemeralNotice(interaction, payload, delayMs = 8000) {
 async function respond(interaction, content) {
   if (interaction.deferred || interaction.replied) {
     const response = await interaction.editReply({ content });
-    scheduleEphemeralReplyDeletion(interaction, 8000);
+    scheduleEphemeralReplyDeletion(interaction, 3000);
     return response;
   }
   return replyEphemeralAndDelete(interaction, { content }, 8000);
