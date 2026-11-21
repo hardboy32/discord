@@ -2131,13 +2131,24 @@ function startDashboard(client, playFromDashboard, playSavedTrackFromDashboard, 
             const recipient = await client.users.fetch(session.user.id);
             const today = getPersianCalendarDate();
             const birthdays = Array.isArray(settings.birthdays) ? settings.birthdays : [];
-            const matchingToday = birthdays.filter(item =>
+            const dueToday = birthdays.filter(item =>
               item && Number(item.month) === today.month && Number(item.day) === today.day &&
               Number(item.lastNotifiedYear) !== today.year
+            );
+            const matchingToday = dueToday.length;
+            const missingRecipientCount = dueToday.filter(item =>
+              !/^\d{17,20}$/.test(String(item.notifyUserId || BIRTHDAY_OWNER_ID || '').trim())
+            ).length;
+            const alreadySentToday = birthdays.filter(item =>
+              item && Number(item.month) === today.month && Number(item.day) === today.day &&
+              Number(item.lastNotifiedYear) === today.year
             ).length;
             const dateLabel = today.day + '/' + today.month + '/' + today.year;
             const diagnostic = 'Current Persian date (Asia/Tehran): ' + dateLabel +
-              '. Saved birthdays: ' + birthdays.length + '. Matching today: ' + matchingToday + '.';
+              '. Saved birthdays: ' + birthdays.length +
+              '. Matching today (pending): ' + matchingToday +
+              '. Missing notification recipient: ' + missingRecipientCount +
+              '. Already sent this Persian year: ' + alreadySentToday + '.';
             await recipient.send({
               content: '🧪 **HARD BOT birthday reminder test**\nThe test was successful. Your birthday reminders can reach this Discord account by direct message.\n' + diagnostic,
               allowedMentions: { parse: [] },
